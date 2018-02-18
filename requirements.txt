@@ -1,0 +1,12 @@
+argparse
+numpy
+scipy
+pandas
+SQLAlchemy
+keras
+tensorflow
+sklearn
+pyqt5
+pydot
+graphviz
+h5py

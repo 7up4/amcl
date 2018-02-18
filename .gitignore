@@ -1,0 +1,15 @@
+# ignore Tensorboard log files
+logs
+
+# ignore envrironment stuff
+.env
+.idea
+
+# ignore docs
+docs
+
+# ignore neural network models
+*.h5
+
+# ignore some projecting stuff
+ui
