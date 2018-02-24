@@ -15,10 +15,9 @@ import sqlalchemy
 from keras.models import Sequential, load_model, model_from_json, model_from_yaml, Model
 from keras.layers import Concatenate, Input, Dense, Add
 from keras.layers.core import Dense, Dropout, Activation
-from keras.utils import to_categorical
-from keras.optimizers import SGD
 from keras.utils.vis_utils import plot_model
 from keras.callbacks import TensorBoard
+from keras.layers.normalization import BatchNormalization
 from sklearn import preprocessing
 import keras
 
@@ -28,6 +27,8 @@ class Feature:
         self._name = name
         self._significance = significance
         self._resulting = resulting
+        self._type = None
+        self._sensitivity = 0.0
 
     def get_name(self):
         return self._name
@@ -61,6 +62,9 @@ class Feature:
 
     def get_type(self):
         return self._type
+
+    def get_sensitivity(self):
+        return self._sensitivity
 
 
 class ContinuousFeature(Feature):
@@ -238,10 +242,14 @@ class NeuralNetwork:
         activation = 'relu'
         output_activation = 'sigmoid'
         model = Sequential()
-        model.add(Dense(hidden_units, input_dim=input_dim, kernel_initializer=kernel_initializer, activation=activation))
+        model.add(Dense(hidden_units, input_dim=input_dim, kernel_initializer=kernel_initializer))
+        model.add(Activation(activation))
         model.add(Dropout(0.2))
-        model.add(Dense(hidden_units, input_dim=input_dim, kernel_initializer=kernel_initializer, activation=activation))
-        model.add(Dense(output_units, activation=output_activation))
+        model.add(Dense(hidden_units, input_dim=input_dim, kernel_initializer=kernel_initializer))
+        model.add(Activation(activation))
+        # model.add(Dropout(0.2))
+        model.add(Dense(output_units))
+        model.add(Activation(output_activation))
         return model
 
     def save_plot(self, to_file='model_plot.png', shapes=True, layer_names=True):
@@ -286,9 +294,12 @@ class PreprocessedData:
             self.__dataset[feature_name].fillna(value=to_class, inplace=True)
 
     def normalize(self):
-        continuous_features = self.__dataset.select_dtypes(exclude='category')
-        normalized_cont_f = (continuous_features-continuous_features.mean())/continuous_features.std()
-        self.__dataset.update(normalized_cont_f)
+        cont_features = self.__dataset.select_dtypes(exclude='category').columns.tolist()
+        normalized_data = preprocessing.normalize(self.__dataset[cont_features])
+        self.__dataset[cont_features] = normalized_data
+        # continuous_features = self.__dataset.select_dtypes(exclude='category')
+        # normalized_cont_f = (continuous_features-continuous_features.mean())/continuous_features.std()
+        # self.__dataset.update(normalized_cont_f)
 
     def one_hot_encode(self):
         categorical_features = self.__dataset.select_dtypes(include='category')
@@ -301,6 +312,14 @@ class PreprocessedData:
 
     def get_dataset(self):
         return self.__dataset
+
+    def get_columns(self):
+        return self.__dataset.columns.tolist()
+
+    def add_noise(self, column: str, rate: float):
+        copy = self.__dataset.copy()
+        copy[column] *= (1 + rate)
+        return copy
 
 
 class NNTrainer:
@@ -373,6 +392,12 @@ class DataSet:
         else:
             return None
 
+    def shuffle(self):
+        self.__data = self.__data.sample(frac=1).reset_index(drop=True)
+
+    def drop_columns(self, columns):
+        self.__data.drop(columns, inplace=True, axis=1)
+
     def __create_feature_objects(self):
         feature_names = self.__data.columns.values.tolist()
         feature_classes = self.__feature_classes
@@ -443,6 +468,7 @@ class DataSet:
             column = self.__data[feature_name]
             column[column not in from_classes] = to_class
 
+
 if __name__ == '__main__':
     app = QCoreApplication(sys.argv)
 
@@ -483,49 +509,77 @@ if __name__ == '__main__':
         ihandler = DataFileHandler(args.input, ',', 1, 0, ['?'])
         dataset = DataSet("num", [1, 2, 3], [0], ihandler)
         dataset.read_data()
-        # print(dataset.get_data())
+
         preprocessed_data = PreprocessedData(dataset, stop_position=241, resulting_feature='num')
         preprocessed_data.combine_classes(feature_name='num', from_classes=[2,3,4], to_class=1)
         preprocessed_data.bucketize('age', 10, list(range(1,11)))
-        # preprocessed_data.normalize()
         preprocessed_data.one_hot_encode()
 
-        data = preprocessed_data.get_dataset()
-        print(data)
-        training_data = data.loc[:, data.columns != 'num'].values
-        training_target = data['num'].values
+        training_data = preprocessed_data.get_dataset()
+        training_data = training_data.loc[:, training_data.columns != 'num'].values
+        training_target = preprocessed_data.get_dataset()['num'].values
+
+        test_data = PreprocessedData(dataset, start_position=242, without_resulting_feature=True)
+        test_data.bucketize('age', 10, list(range(1,11)))
+        test_data.one_hot_encode()
+        test_data = test_data.get_dataset().values
+
+        test_target = dataset.get_data(start=242).dropna(axis=0, how='any')['num']
+        test_target.cat.remove_categories([2,3,4], inplace=True)
+        test_target.fillna(value=1, inplace=True)
+        test_target = test_target.values
+
         network = NeuralNetwork.from_scratch(training_data.shape[1], training_data.shape[1])
         network.save_plot('model_plot.png')
         network.compile(loss='binary_crossentropy', optimizer='adam')
-        # print(training_data)
-        trainer = NNTrainer(network, training_data, training_target, epochs=1000)
-        trainer.train()
+
+        trainer = NNTrainer(network, training_data, training_target, epochs=100)
+        trainer.train(verbose=0)
         trainer.evaluate()
 
-        print(trainer.get_score())
-
         network.to_h5('my_model.h5')
-        del network
-        network = NeuralNetwork.from_file('my_model.h5')
 
-        test_data = PreprocessedData(dataset, start_position=242, without_resulting_feature=True)
-        real_values = dataset.get_data(start=242).dropna(axis=0, how='any')['num']
-        real_values.cat.remove_categories([2,3,4], inplace=True)
-        real_values.fillna(value=1, inplace=True)
-        real_values = real_values.values
-        # print(real_values)
-        test_data.bucketize('age', 10, list(range(1,11)))
-        # test_data.normalize()
-        test_data.one_hot_encode()
-        test_data = test_data.get_dataset().values
-        # print(test_data)
         predictor = NNPredictor(network, test_data)
         predictor.predict()
-        print(predictor.get_prediction())
-        predictor.evaluate(real_values)
+        predictor.evaluate(test_target)
         print(predictor.get_score())
 
-        # ------------------------------------------------
+        predictionX = predictor.get_prediction()
+        # print(predictionX)
+
+        columns = preprocessed_data.get_columns()
+        for column in columns:
+            if column == 'num':
+                continue
+            print(column)
+            training_data = preprocessed_data.add_noise(column, 0.01)
+            training_data = training_data.loc[:, training_data.columns != 'num'].values
+            training_target = preprocessed_data.get_dataset()['num'].values
+
+            network = NeuralNetwork.from_scratch(training_data.shape[1], training_data.shape[1])
+            network.compile(loss='binary_crossentropy', optimizer='adam')
+
+            trainer = NNTrainer(network, training_data, training_target, epochs=100)
+            trainer.train(verbose=0)
+            trainer.evaluate()
+
+            predictor = NNPredictor(network, test_data)
+            predictor.predict()
+            predictor.evaluate(test_target)
+            print(predictor.get_score())
+
+            noisy_prediction = predictor.get_prediction()
+            # print(noisy_prediction)
+            print(abs(np.sum(noisy_prediction)-np.sum(predictionX))/predictionX.size)
+
+        ###
+        # for k, v in dataset.get_features().items():
+        #     print(v.is_valuable())
+        # print(dataset.get_data())
+        # dataset.drop_columns('trestbps')
+        ###
+
+        ###
         # input1 = Input(shape=(5,))
         # dense1 = Dense(5, activation='relu')(input1)
         # out1 = Dense(1, activation='sigmoid')(dense1)
@@ -540,4 +594,4 @@ if __name__ == '__main__':
         # merged = Dense(2, activation='relu')(merged)
         # merged = Dense(1, activation='sigmoid')(merged)
         # model = Model([model1.input, model2.input], merged)
-        # ------------------------------------------------
+        ###
