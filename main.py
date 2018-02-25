@@ -13,8 +13,8 @@ from PyQt5.QtSql import QSqlDatabase, QSqlQuery, QSqlTableModel
 from PyQt5.QtCore import QElapsedTimer
 import sqlalchemy
 from keras.models import Sequential, load_model, model_from_json, model_from_yaml, Model
-from keras.layers import Concatenate, Input, Dense, Add
-from keras.layers.core import Dense, Dropout, Activation
+from keras.layers import Concatenate, Input, Dense, Add, Embedding, merge, Merge
+from keras.layers.core import Dense, Dropout, Activation, Reshape
 from keras.utils.vis_utils import plot_model
 from keras.callbacks import TensorBoard
 from keras.layers.normalization import BatchNormalization
@@ -251,6 +251,18 @@ class NeuralNetwork:
         model.add(Dense(output_units))
         model.add(Activation(output_activation))
         return model
+
+    @staticmethod
+    def build(input_dim, cat_input_dim, hidden_units: int, kernel_initializer: str="uniform"):
+        output_units = 1
+        activation = 'relu'
+        output_activation = 'sigmoid'
+        m1 = Sequential()
+        m1.add(Embedding(input_dim=cat_input_dim, output_dim=3))
+        m2 = Sequential()
+        m2.add(Dense(input_dim=input_dim, activation=activation, kernel_initializer=kernel_initializer))
+        m3 = Sequential(Concatenate([m1, m2]))
+        plot_model(m3, "/tmp/m3.png", show_layer_names=True, show_shapes=True)
 
     def save_plot(self, to_file='model_plot.png', shapes=True, layer_names=True):
         plot_model(self.__model, to_file=to_file, show_shapes=shapes, show_layer_names=layer_names)
@@ -512,65 +524,92 @@ if __name__ == '__main__':
 
         preprocessed_data = PreprocessedData(dataset, stop_position=241, resulting_feature='num')
         preprocessed_data.combine_classes(feature_name='num', from_classes=[2,3,4], to_class=1)
-        preprocessed_data.bucketize('age', 10, list(range(1,11)))
-        preprocessed_data.one_hot_encode()
+        # preprocessed_data.bucketize('age', 10, list(range(1,11)))
+        # preprocessed_data.one_hot_encode()
 
         training_data = preprocessed_data.get_dataset()
-        training_data = training_data.loc[:, training_data.columns != 'num'].values
+        # training_data = training_data.loc[:, training_data.columns != 'num'].values
+        cont_data = training_data.select_dtypes(exclude='category').values
+        # cat_data = training_data.select_dtypes(include='category').drop(columns='num')
+        cat_data = training_data['cp'].cat.codes.astype('category')
         training_target = preprocessed_data.get_dataset()['num'].values
 
-        test_data = PreprocessedData(dataset, start_position=242, without_resulting_feature=True)
-        test_data.bucketize('age', 10, list(range(1,11)))
-        test_data.one_hot_encode()
-        test_data = test_data.get_dataset().values
+        cat = Input(shape=(1,))
+        cont = Input(shape=(5,))
+        emb = Embedding(cat_data.cat.categories.size+1, 3)(cat)
+        cont2 = Reshape((1, 5))(cont)
+        merged = merge([emb, cont2], mode='concat')
+        hidd = Dense(30, activation='relu', kernel_initializer='uniform')(merged)
+        out = Dense(1, activation='sigmoid')(hidd)
+        outt = Reshape((1,))(out)
+        m = Model(inputs=[cat,cont], outputs=outt)
+        plot_model(m, "/tmp/m3.png", show_layer_names=True, show_shapes=True)
+        m.compile(loss='binary_crossentropy',optimizer='adam', metrics=['accuracy'])
+        m.fit([cat_data, cont_data], training_target, epochs=100)
 
+        test_data = PreprocessedData(dataset, start_position=242, without_resulting_feature=True)
+        # test_data.bucketize('age', 10, list(range(1,11)))
+        # test_data.one_hot_encode()
+        test_data_cont = test_data.get_dataset().select_dtypes(exclude='category').values
+        test_data_cat = test_data.get_dataset()['cp'].cat.codes.astype('category').values
         test_target = dataset.get_data(start=242).dropna(axis=0, how='any')['num']
         test_target.cat.remove_categories([2,3,4], inplace=True)
         test_target.fillna(value=1, inplace=True)
         test_target = test_target.values
 
-        network = NeuralNetwork.from_scratch(training_data.shape[1], training_data.shape[1])
-        network.save_plot('model_plot.png')
-        network.compile(loss='binary_crossentropy', optimizer='adam')
+        prediction = m.predict([test_data_cat, test_data_cont],batch_size=16).flatten()
+        compared = np.equal(np.round(prediction), test_target)
+        print(compared)
 
-        trainer = NNTrainer(network, training_data, training_target, epochs=100)
-        trainer.train(verbose=0)
-        trainer.evaluate()
+        corr = np.count_nonzero(compared)
+        tot = len(test_target)
+        wrong = tot - corr
+        score = corr / tot
+        print(score)
 
-        network.to_h5('my_model.h5')
+        #
+        # network = NeuralNetwork.from_scratch(training_data.shape[1], training_data.shape[1])
+        # network.save_plot('model_plot.png')
+        # network.compile(loss='binary_crossentropy', optimizer='adam')
 
-        predictor = NNPredictor(network, test_data)
-        predictor.predict()
-        predictor.evaluate(test_target)
-        print(predictor.get_score())
-
-        predictionX = predictor.get_prediction()
-        # print(predictionX)
-
-        columns = preprocessed_data.get_columns()
-        for column in columns:
-            if column == 'num':
-                continue
-            print(column)
-            training_data = preprocessed_data.add_noise(column, 0.01)
-            training_data = training_data.loc[:, training_data.columns != 'num'].values
-            training_target = preprocessed_data.get_dataset()['num'].values
-
-            network = NeuralNetwork.from_scratch(training_data.shape[1], training_data.shape[1])
-            network.compile(loss='binary_crossentropy', optimizer='adam')
-
-            trainer = NNTrainer(network, training_data, training_target, epochs=100)
-            trainer.train(verbose=0)
-            trainer.evaluate()
-
-            predictor = NNPredictor(network, test_data)
-            predictor.predict()
-            predictor.evaluate(test_target)
-            print(predictor.get_score())
-
-            noisy_prediction = predictor.get_prediction()
-            # print(noisy_prediction)
-            print(abs(np.sum(noisy_prediction)-np.sum(predictionX))/predictionX.size)
+        # trainer = NNTrainer(network, training_data, training_target, epochs=100)
+        # trainer.train(verbose=0)
+        # trainer.evaluate()
+        #
+        # network.to_h5('my_model.h5')
+        #
+        # predictor = NNPredictor(network, test_data)
+        # predictor.predict()
+        # predictor.evaluate(test_target)
+        # print(predictor.get_score())
+        #
+        # predictionX = predictor.get_prediction()
+        # # print(predictionX)
+        #
+        # columns = preprocessed_data.get_columns()
+        # for column in columns:
+        #     if column == 'num':
+        #         continue
+        #     print(column)
+        #     training_data = preprocessed_data.add_noise(column, 0.01)
+        #     training_data = training_data.loc[:, training_data.columns != 'num'].values
+        #     training_target = preprocessed_data.get_dataset()['num'].values
+        #
+        #     network = NeuralNetwork.from_scratch(training_data.shape[1], training_data.shape[1])
+        #     network.compile(loss='binary_crossentropy', optimizer='adam')
+        #
+        #     trainer = NNTrainer(network, training_data, training_target, epochs=100)
+        #     trainer.train(verbose=0)
+        #     trainer.evaluate()
+        #
+        #     predictor = NNPredictor(network, test_data)
+        #     predictor.predict()
+        #     predictor.evaluate(test_target)
+        #     print(predictor.get_score())
+        #
+        #     noisy_prediction = predictor.get_prediction()
+        #     # print(noisy_prediction)
+        #     print(abs(np.sum(noisy_prediction)-np.sum(predictionX))/predictionX.size)
 
         ###
         # for k, v in dataset.get_features().items():
