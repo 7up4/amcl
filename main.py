@@ -344,9 +344,9 @@ class NNTrainer:
         self.__score = None
 
     def train(self, verbose=1):
-        tensorboard = TensorBoard(log_dir="logs/{}".format(time()))
+        # tensorboard = TensorBoard(log_dir="logs/{}".format(time()))
         self.__nnet.get_model().fit(self.__training_data, self.__target_data, batch_size=self.__batch_size,
-                                    epochs=self.__epochs, verbose=verbose, callbacks=[tensorboard])
+                                    epochs=self.__epochs, verbose=verbose)
 
     def evaluate(self, verbose=1):
         self.__score = self.__nnet.get_model().evaluate(self.__training_data, self.__target_data,
@@ -524,48 +524,61 @@ if __name__ == '__main__':
 
         preprocessed_data = PreprocessedData(dataset, stop_position=241, resulting_feature='num')
         preprocessed_data.combine_classes(feature_name='num', from_classes=[2,3,4], to_class=1)
-        # preprocessed_data.bucketize('age', 10, list(range(1,11)))
-        # preprocessed_data.one_hot_encode()
+        preprocessed_data.bucketize('age', 10, list(range(0,10)))
 
         training_data = preprocessed_data.get_dataset()
-        # training_data = training_data.loc[:, training_data.columns != 'num'].values
         cont_data = training_data.select_dtypes(exclude='category').values
-        # cat_data = training_data.select_dtypes(include='category').drop(columns='num')
-        cat_data = training_data['cp'].cat.codes.astype('category')
+        cat_data = training_data.select_dtypes(include='category').drop(columns='num')
         training_target = preprocessed_data.get_dataset()['num'].values
 
-        cat = Input(shape=(1,))
-        cont = Input(shape=(5,))
-        emb = Embedding(cat_data.cat.categories.size+1, 3)(cat)
-        cont2 = Reshape((1, 5))(cont)
-        merged = merge([emb, cont2], mode='concat')
-        hidd = Dense(30, activation='relu', kernel_initializer='uniform')(merged)
-        out = Dense(1, activation='sigmoid')(hidd)
+        emb_list = []
+        cat_input_list = []
+        for i in cat_data:
+            cat_input = Input((1,))
+            cat_input_list.append(cat_input)
+            emb = Embedding(cat_data[i].cat.categories.size+1, 10)(cat_input)
+            emb_list.append(emb)
+
+        cont = Input(shape=(cont_data.shape[-1],))
+        cont2 = Reshape((1, cont_data.shape[-1]))(cont)
+        combined_emb_resh = emb_list + [cont2]
+        merged = merge(combined_emb_resh, mode='concat')
+        hidd = Dense(95, activation='relu', kernel_initializer='uniform')(merged)
+        do = Dropout(0.2)(hidd)
+        out = Dense(1, activation='sigmoid')(do)
         outt = Reshape((1,))(out)
-        m = Model(inputs=[cat,cont], outputs=outt)
+        combined_inputes = cat_input_list + [cont]
+        m = Model(inputs=combined_inputes, outputs=outt)
         plot_model(m, "/tmp/m3.png", show_layer_names=True, show_shapes=True)
         m.compile(loss='binary_crossentropy',optimizer='adam', metrics=['accuracy'])
-        m.fit([cat_data, cont_data], training_target, epochs=100)
+        for col in cat_data:
+            cat_data[col] = cat_data[col].cat.codes.astype('category')
+        cat_values = np.transpose(cat_data.values).tolist()
+        cat_values = [np.asarray(x) for x in cat_values]
+        m.fit([*cat_values, cont_data], training_target, epochs=1000)
 
         test_data = PreprocessedData(dataset, start_position=242, without_resulting_feature=True)
-        # test_data.bucketize('age', 10, list(range(1,11)))
-        # test_data.one_hot_encode()
+        test_data.bucketize('age', 10, list(range(0,10)))
         test_data_cont = test_data.get_dataset().select_dtypes(exclude='category').values
-        test_data_cat = test_data.get_dataset()['cp'].cat.codes.astype('category').values
+        test_data_cat = test_data.get_dataset().select_dtypes('category')
+        for col in test_data_cat:
+            test_data_cat[col] = test_data_cat[col].cat.codes.astype('category')
+        print(test_data_cat)
         test_target = dataset.get_data(start=242).dropna(axis=0, how='any')['num']
         test_target.cat.remove_categories([2,3,4], inplace=True)
         test_target.fillna(value=1, inplace=True)
         test_target = test_target.values
+        test_cat_values = np.transpose(test_data_cat.values).tolist()
+        test_cat_values=[np.asarray(x) for x in test_cat_values]
 
-        prediction = m.predict([test_data_cat, test_data_cont],batch_size=16).flatten()
+        prediction = m.predict([*test_cat_values, test_data_cont],batch_size=16).flatten()
         compared = np.equal(np.round(prediction), test_target)
-        print(compared)
 
         corr = np.count_nonzero(compared)
         tot = len(test_target)
         wrong = tot - corr
         score = corr / tot
-        print(score)
+        print(wrong, score)
 
         #
         # network = NeuralNetwork.from_scratch(training_data.shape[1], training_data.shape[1])
