@@ -222,8 +222,8 @@ class NeuralNetwork:
         return self.__model
 
     @classmethod
-    def from_scratch(cls, input_dim: int, hidden_units: int, kernel_initializer: str="uniform"):
-        model = NeuralNetwork.build(input_dim, hidden_units, kernel_initializer)
+    def from_scratch(cls, categorical_data: pd.DataFrame, continuous_features: int, hidden_units: int, dropout_rate: float=0.2, kernel_initializer: str="uniform"):
+        model = NeuralNetwork.build(categorical_data, continuous_features, hidden_units, dropout_rate, kernel_initializer)
         return cls(model)
 
     @classmethod
@@ -237,32 +237,40 @@ class NeuralNetwork:
         return cls(model)
 
     @staticmethod
-    def build(input_dim: int, hidden_units: int, kernel_initializer: str="uniform" ):
+    def build(categorical_data: pd.DataFrame, continuous_features: int, hidden_units: int, dropout_rate: float=0.2, kernel_initializer: str="uniform"):
         output_units = 1
         activation = 'relu'
         output_activation = 'sigmoid'
-        model = Sequential()
-        model.add(Dense(hidden_units, input_dim=input_dim, kernel_initializer=kernel_initializer))
-        model.add(Activation(activation))
-        model.add(Dropout(0.2))
-        model.add(Dense(hidden_units, input_dim=input_dim, kernel_initializer=kernel_initializer))
-        model.add(Activation(activation))
-        # model.add(Dropout(0.2))
-        model.add(Dense(output_units))
-        model.add(Activation(output_activation))
-        return model
 
-    @staticmethod
-    def build(input_dim, cat_input_dim, hidden_units: int, kernel_initializer: str="uniform"):
-        output_units = 1
-        activation = 'relu'
-        output_activation = 'sigmoid'
-        m1 = Sequential()
-        m1.add(Embedding(input_dim=cat_input_dim, output_dim=3))
-        m2 = Sequential()
-        m2.add(Dense(input_dim=input_dim, activation=activation, kernel_initializer=kernel_initializer))
-        m3 = Sequential(Concatenate([m1, m2]))
-        plot_model(m3, "/tmp/m3.png", show_layer_names=True, show_shapes=True)
+        # create input layers complemented by embedding layers to handle categorical features
+        embedding_layers = []
+        categorical_inputs = []
+        for i in categorical_data:
+            categorical_input = Input((1,))
+            categorical_inputs.append(categorical_input)
+            embedding_layer = Embedding(categorical_data[i].cat.categories.size + 1, 10)(categorical_input)
+            embedding_layers.append(embedding_layer)
+
+        # create input layer for continuous data
+        continuous_input = Input(shape=(continuous_features,))
+        reshaped_continuous_input = Reshape((1, continuous_features))(continuous_input)
+
+        # merge all inputs
+        merge_layer = merge(embedding_layers + [reshaped_continuous_input], mode='concat')
+
+        # hidden layers
+        hidden_layer1 = Dense(hidden_units, activation=activation, kernel_initializer=kernel_initializer)(merge_layer)
+        dropout_layer1 = Dropout(dropout_rate)(hidden_layer1)
+
+        # output_layer
+        output_layer = Dense(output_units, activation=output_activation)(dropout_layer1)
+
+        # add reshape layer since output should be vector
+        output_layer = Reshape((1,))(output_layer)
+
+        # create final model
+        model = Model(inputs=categorical_inputs + [continuous_input], outputs=output_layer)
+        return model
 
     def save_plot(self, to_file='model_plot.png', shapes=True, layer_names=True):
         plot_model(self.__model, to_file=to_file, show_shapes=shapes, show_layer_names=layer_names)
@@ -296,6 +304,15 @@ class PreprocessedData:
         self.__dataset.drop(column_name, inplace=True, axis=1)
         bucketized_col = pd.cut(col, categories_num, labels=labels)
         self.__dataset = self.__dataset.join(bucketized_col)
+
+    def label_categorical_data(self):
+        categorical_features = self.__dataset.select_dtypes('category').columns
+        try:
+            categorical_features.drop(self.__resulting_feature)
+        except ValueError:
+            pass
+        for column in categorical_features:
+            self.__dataset[column] = self.__dataset[column].cat.codes.astype('category')
 
     def __drop_invalid_data(self):
         self.__dataset = self.__dataset.dropna(axis=0, how='any')
@@ -370,7 +387,7 @@ class NNPredictor:
         if len(self.__prediction) > 0:
             compared = np.equal(np.round(self.__prediction), real_values)
             self.__score['correct'] = np.count_nonzero(compared)
-            self.__score['total'] = len(self.__dataset)
+            self.__score['total'] = len(self.__prediction)
             self.__score['wrong'] = self.__score['total'] - self.__score['correct']
             self.__score['score'] = self.__score['correct'] / self.__score['total']
 
@@ -517,88 +534,57 @@ if __name__ == '__main__':
         sample.read_data()
         print(sample.get_feature("num").is_resulting())
 
+    def dataframe_to_series(dataframe):
+        return list(np.transpose(dataframe.values))
+
     if args.input:
         ihandler = DataFileHandler(args.input, ',', 1, 0, ['?'])
         dataset = DataSet("num", [1, 2, 3], [0], ihandler)
         dataset.read_data()
 
+        # Preprocess input data
         preprocessed_data = PreprocessedData(dataset, stop_position=241, resulting_feature='num')
         preprocessed_data.combine_classes(feature_name='num', from_classes=[2,3,4], to_class=1)
         preprocessed_data.bucketize('age', 10, list(range(0,10)))
+        preprocessed_data.label_categorical_data()
 
+        # Prepare data for training
         training_data = preprocessed_data.get_dataset()
         cont_data = training_data.select_dtypes(exclude='category').values
         cat_data = training_data.select_dtypes(include='category').drop(columns='num')
         training_target = preprocessed_data.get_dataset()['num'].values
 
-        emb_list = []
-        cat_input_list = []
-        for i in cat_data:
-            cat_input = Input((1,))
-            cat_input_list.append(cat_input)
-            emb = Embedding(cat_data[i].cat.categories.size+1, 10)(cat_input)
-            emb_list.append(emb)
+        # Create neural network model
+        network = NeuralNetwork.from_scratch(cat_data, cont_data.shape[-1], hidden_units=95, dropout_rate=0.2)
+        network.save_plot('model_plot.png')
+        network.compile(loss='binary_crossentropy', optimizer='adam')
 
-        cont = Input(shape=(cont_data.shape[-1],))
-        cont2 = Reshape((1, cont_data.shape[-1]))(cont)
-        combined_emb_resh = emb_list + [cont2]
-        merged = merge(combined_emb_resh, mode='concat')
-        hidd = Dense(95, activation='relu', kernel_initializer='uniform')(merged)
-        do = Dropout(0.2)(hidd)
-        out = Dense(1, activation='sigmoid')(do)
-        outt = Reshape((1,))(out)
-        combined_inputes = cat_input_list + [cont]
-        m = Model(inputs=combined_inputes, outputs=outt)
-        plot_model(m, "/tmp/m3.png", show_layer_names=True, show_shapes=True)
-        m.compile(loss='binary_crossentropy',optimizer='adam', metrics=['accuracy'])
-        for col in cat_data:
-            cat_data[col] = cat_data[col].cat.codes.astype('category')
-        cat_values = np.transpose(cat_data.values).tolist()
-        cat_values = [np.asarray(x) for x in cat_values]
-        m.fit([*cat_values, cont_data], training_target, epochs=1000)
+        cat_data = dataframe_to_series(cat_data)
+
+        # Create trainer and train a little
+        trainer = NNTrainer(network, [*cat_data, cont_data], training_target, epochs=100)
+        trainer.train(verbose=1)
+        trainer.evaluate()
 
         test_data = PreprocessedData(dataset, start_position=242, without_resulting_feature=True)
         test_data.bucketize('age', 10, list(range(0,10)))
+        test_data.label_categorical_data()
+
         test_data_cont = test_data.get_dataset().select_dtypes(exclude='category').values
         test_data_cat = test_data.get_dataset().select_dtypes('category')
-        for col in test_data_cat:
-            test_data_cat[col] = test_data_cat[col].cat.codes.astype('category')
-        print(test_data_cat)
+        test_data_cat = dataframe_to_series(test_data_cat)
+
         test_target = dataset.get_data(start=242).dropna(axis=0, how='any')['num']
         test_target.cat.remove_categories([2,3,4], inplace=True)
         test_target.fillna(value=1, inplace=True)
         test_target = test_target.values
-        test_cat_values = np.transpose(test_data_cat.values).tolist()
-        test_cat_values=[np.asarray(x) for x in test_cat_values]
 
-        prediction = m.predict([*test_cat_values, test_data_cont],batch_size=16).flatten()
-        compared = np.equal(np.round(prediction), test_target)
+        # Create predictor and make some predictions
+        predictor = NNPredictor(network, [*test_data_cat, test_data_cont])
+        predictor.predict()
+        predictor.evaluate(test_target)
+        print(predictor.get_score())
 
-        corr = np.count_nonzero(compared)
-        tot = len(test_target)
-        wrong = tot - corr
-        score = corr / tot
-        print(wrong, score)
-
-        #
-        # network = NeuralNetwork.from_scratch(training_data.shape[1], training_data.shape[1])
-        # network.save_plot('model_plot.png')
-        # network.compile(loss='binary_crossentropy', optimizer='adam')
-
-        # trainer = NNTrainer(network, training_data, training_target, epochs=100)
-        # trainer.train(verbose=0)
-        # trainer.evaluate()
-        #
-        # network.to_h5('my_model.h5')
-        #
-        # predictor = NNPredictor(network, test_data)
-        # predictor.predict()
-        # predictor.evaluate(test_target)
-        # print(predictor.get_score())
-        #
-        # predictionX = predictor.get_prediction()
-        # # print(predictionX)
-        #
         # columns = preprocessed_data.get_columns()
         # for column in columns:
         #     if column == 'num':
