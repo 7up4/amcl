@@ -1,10 +1,8 @@
 import os
 import sys
-from time import time
 import argparse
 from abc import ABC, abstractmethod, ABCMeta
 import numpy as np
-import scipy
 import pandas as pd
 from scipy.stats import chisquare
 from scipy.stats import mannwhitneyu
@@ -13,14 +11,12 @@ from PyQt5.QtSql import QSqlDatabase, QSqlQuery, QSqlTableModel
 from PyQt5.QtCore import QElapsedTimer
 import sqlalchemy
 from keras.models import Sequential, load_model, model_from_json, model_from_yaml, Model
-from keras.layers import Concatenate, Input, Dense, Add, Embedding, merge, Merge
-from keras.layers.core import Dense, Dropout, Activation, Reshape
+from keras.layers import Concatenate, Input, Embedding, Lambda
+from keras.layers.core import Dense, Dropout, Reshape
 from keras.utils.vis_utils import plot_model
 from keras.callbacks import TensorBoard
 from keras.layers.normalization import BatchNormalization
 from sklearn import preprocessing
-import keras
-
 
 class Feature:
     def __init__(self, name: str, significance: float = None, resulting: bool = False) -> object:
@@ -256,7 +252,7 @@ class NeuralNetwork:
         reshaped_continuous_input = Reshape((1, continuous_features))(continuous_input)
 
         # merge all inputs
-        merge_layer = merge(embedding_layers + [reshaped_continuous_input], mode='concat')
+        merge_layer = Concatenate()(embedding_layers + [reshaped_continuous_input])
 
         # hidden layers
         hidden_layer1 = Dense(hidden_units, activation=activation, kernel_initializer=kernel_initializer)(merge_layer)
@@ -499,6 +495,7 @@ class DataSet:
 
 
 if __name__ == '__main__':
+    np.seterr(divide='ignore', invalid='ignore')
     app = QCoreApplication(sys.argv)
 
     parser = argparse.ArgumentParser()
