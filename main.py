@@ -17,6 +17,8 @@ from keras.utils.vis_utils import plot_model
 from keras.callbacks import TensorBoard
 from keras.layers.normalization import BatchNormalization
 from sklearn import preprocessing
+import tensorflow as tf
+
 
 class Feature:
     def __init__(self, name: str, significance: float = None, resulting: bool = False) -> object:
@@ -233,10 +235,21 @@ class NeuralNetwork:
         return cls(model)
 
     @staticmethod
+    def add_noise(x, column, rate):
+        if column == -1:
+            return x
+        noised_column = tf.slice(x, begin=[0, column], size=[-1, 1])
+        left_part = tf.slice(x, [0, 0], [-1, column])
+        right_part = tf.slice(x, [0, column + 1], [-1, -1])
+        noised_column *= (1 + rate)
+        return tf.concat(values=[left_part, noised_column, right_part], axis=1)
+
+    @staticmethod
     def build(categorical_data: pd.DataFrame, continuous_features: int, hidden_units: int, dropout_rate: float=0.2, kernel_initializer: str="uniform"):
         output_units = 1
         activation = 'relu'
         output_activation = 'sigmoid'
+        noise_layer = Lambda(NeuralNetwork.add_noise, arguments={'column': 0, 'rate': 0.2})
 
         # create input layers complemented by embedding layers to handle categorical features
         embedding_layers = []
@@ -249,7 +262,8 @@ class NeuralNetwork:
 
         # create input layer for continuous data
         continuous_input = Input(shape=(continuous_features,))
-        reshaped_continuous_input = Reshape((1, continuous_features))(continuous_input)
+        noisy_input = noise_layer(continuous_input)
+        reshaped_continuous_input = Reshape((1, continuous_features))(noisy_input)
 
         # merge all inputs
         merge_layer = Concatenate()(embedding_layers + [reshaped_continuous_input])
@@ -319,12 +333,12 @@ class PreprocessedData:
             self.__dataset[feature_name].fillna(value=to_class, inplace=True)
 
     def normalize(self):
-        cont_features = self.__dataset.select_dtypes(exclude='category').columns.tolist()
-        normalized_data = preprocessing.normalize(self.__dataset[cont_features])
-        self.__dataset[cont_features] = normalized_data
-        # continuous_features = self.__dataset.select_dtypes(exclude='category')
-        # normalized_cont_f = (continuous_features-continuous_features.mean())/continuous_features.std()
-        # self.__dataset.update(normalized_cont_f)
+        # cont_features = self.__dataset.select_dtypes(exclude='category').columns.tolist()
+        # normalized_data = preprocessing.normalize(self.__dataset[cont_features])
+        # self.__dataset[cont_features] = normalized_data
+        continuous_features = self.__dataset.select_dtypes(exclude='category')
+        normalized_cont_f = (continuous_features-continuous_features.mean())/continuous_features.std()
+        self.__dataset.update(normalized_cont_f)
 
     def one_hot_encode(self):
         categorical_features = self.__dataset.select_dtypes(include='category')
@@ -507,10 +521,7 @@ if __name__ == '__main__':
         alchemy = SqlAlchemyDBHandler("postgresql", "postgres", "nurlan", "your_password", 5432, "dataset")
         alchemy.configure()
         alchemy.open()
-        t = QElapsedTimer()
-        t.start()
         ddd = alchemy.data()
-        print(t.elapsed())
         alchemy.close()
         print(ddd)
 
@@ -518,10 +529,7 @@ if __name__ == '__main__':
         qtdb = QtSqlDBHandler("postgres", "nurlan", "your_password", 5432, "dataset")
         qtdb.configure()
         qtdb.open()
-        t1 = QElapsedTimer()
-        t1.start()
         ddd = qtdb.data("age", "sex", "cp", "trestbps", "chol", "fbs", "restecg", "thalach", "exang", "oldpeak", "slope", "ca", "thal", "num")
-        print(t1.elapsed())
         qtdb.close()
         print(ddd)
 
@@ -543,6 +551,7 @@ if __name__ == '__main__':
         preprocessed_data = PreprocessedData(dataset, stop_position=241, resulting_feature='num')
         preprocessed_data.combine_classes(feature_name='num', from_classes=[2,3,4], to_class=1)
         preprocessed_data.bucketize('age', 10, list(range(0,10)))
+        preprocessed_data.normalize()
         preprocessed_data.label_categorical_data()
 
         # Prepare data for training
@@ -565,6 +574,7 @@ if __name__ == '__main__':
 
         test_data = PreprocessedData(dataset, start_position=242, without_resulting_feature=True)
         test_data.bucketize('age', 10, list(range(0,10)))
+        test_data.normalize()
         test_data.label_categorical_data()
 
         test_data_cont = test_data.get_dataset().select_dtypes(exclude='category').values
