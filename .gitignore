@@ -16,3 +16,5 @@ ui
 
 # ignore model_plot.png
 model_plot.png
+
+*.pyc
