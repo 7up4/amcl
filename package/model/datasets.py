@@ -105,8 +105,14 @@ class DataSet:
             column = self.__data[feature_name]
             column[column not in from_classes] = to_class
 
+    @staticmethod
+    def dataframe_to_series(dataframe):
+        return list(np.transpose(dataframe.values))
+
+
 class PreprocessedData:
-    def __init__(self, dataset, start_position=None, stop_position=None, without_resulting_feature=False, resulting_feature=None):
+    def __init__(self, dataset, start_position=None, stop_position=None, without_resulting_feature=False,
+                 resulting_feature=None):
         self.__dataset = dataset.get_data(start_position, stop_position, without_resulting_feature)
         self.__features = dataset.get_features()
         self.__resulting_feature = resulting_feature

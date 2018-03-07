@@ -1,6 +1,5 @@
 import sys
 import argparse
-import numpy as np
 from PyQt5.QtCore import QCoreApplication
 from package.model.input_handlers import SqlAlchemyDBHandler, QtSqlDBHandler, DataFileHandler
 from package.model.datasets import DataSet, PreprocessedData
@@ -36,9 +35,6 @@ if __name__ == '__main__':
         sample.read_data()
         print(sample.get_feature("num").is_resulting())
 
-    def dataframe_to_series(dataframe):
-        return list(np.transpose(dataframe.values))
-
     if args.input:
         ihandler = DataFileHandler(args.input, ',', 1, 0, ['?'])
         dataset = DataSet("num", [1, 2, 3], [0], ihandler)
@@ -58,11 +54,12 @@ if __name__ == '__main__':
         training_target = preprocessed_data.get_dataset()['num'].values
 
         # Create neural network model
-        network = NeuralNetwork.from_scratch(cat_data, cont_data.shape[-1], hidden_units=95, dropout_rate=0.2, noise_rate=0.2)
+        network = NeuralNetwork.from_scratch(cat_data, cont_data.shape[-1], hidden_units=95, dropout_rate=0.2,
+                                             noise_rate=0.2)
         network.save_plot('model_plot.png')
         network.compile(loss='binary_crossentropy', optimizer='adam')
 
-        cat_data = dataframe_to_series(cat_data)
+        cat_data = DataSet.dataframe_to_series(cat_data)
 
         # Create trainer and train a little
         trainer = NNTrainer(network, [*cat_data, cont_data], training_target, epochs=100)
@@ -76,7 +73,7 @@ if __name__ == '__main__':
 
         test_data_cont = test_data.get_dataset().select_dtypes(exclude='category').values
         test_data_cat = test_data.get_dataset().select_dtypes('category')
-        test_data_cat = dataframe_to_series(test_data_cat)
+        test_data_cat = DataSet.dataframe_to_series(test_data_cat)
 
         test_target = dataset.get_data(start=242).dropna(axis=0, how='any')['num']
         test_target.cat.remove_categories([2,3,4], inplace=True)

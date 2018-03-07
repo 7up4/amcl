@@ -1,5 +1,5 @@
 from .importing_modules import *
-from keras.models import Sequential, load_model, model_from_json, model_from_yaml, Model
+from keras.models import load_model, model_from_json, model_from_yaml, Model
 from keras.layers import Concatenate, Input, Embedding, Lambda
 from keras.layers.core import Dense, Dropout, Reshape
 from keras.utils.vis_utils import plot_model
@@ -15,8 +15,10 @@ class NeuralNetwork:
         return self.__model
 
     @classmethod
-    def from_scratch(cls, categorical_data: pd.DataFrame, continuous_features: int, hidden_units: int, noise_rate: float, noisy_column=None, dropout_rate: float=0.2, kernel_initializer: str="uniform"):
-        model = NeuralNetwork.build(categorical_data, continuous_features, hidden_units, noisy_column, noise_rate, dropout_rate, kernel_initializer)
+    def from_scratch(cls, categorical_data: pd.DataFrame, continuous_features: int, hidden_units: int,
+                     noise_rate: float, noisy_column=None, dropout_rate: float=0.2, kernel_initializer: str="uniform"):
+        model = NeuralNetwork.build(categorical_data, continuous_features, hidden_units, noisy_column, noise_rate,
+                                    dropout_rate, kernel_initializer)
         return cls(model)
 
     @classmethod
@@ -39,12 +41,14 @@ class NeuralNetwork:
         return x * (1 + rate)
 
     @staticmethod
-    def build(categorical_data: pd.DataFrame, continuous_features: int, hidden_units: int, noisy_column: int, noise_rate: float, dropout_rate: float, kernel_initializer: str):
+    def build(categorical_data: pd.DataFrame, continuous_features: int, hidden_units: int, noisy_column: int,
+              noise_rate: float, dropout_rate: float, kernel_initializer: str):
         output_units = 1
         activation = 'relu'
         output_activation = 'sigmoid'
         if noisy_column:
-            noise_layer = Lambda(NeuralNetwork.__add_noise_to_column, arguments={'column': noisy_column, 'rate': noise_rate})
+            noise_layer = Lambda(NeuralNetwork.__add_noise_to_column, arguments={'column': noisy_column,
+                                                                                 'rate': noise_rate})
 
         # create input layers complemented by embedding layers to handle categorical features
         embedding_layers = []

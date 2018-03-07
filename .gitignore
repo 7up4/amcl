@@ -2,7 +2,7 @@
 logs
 
 # ignore envrironment stuff
-.env
+env
 .idea
 
 # ignore docs

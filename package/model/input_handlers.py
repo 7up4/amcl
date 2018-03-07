@@ -18,7 +18,8 @@ class InputHandler(object):
 
 
 class DataFileHandler(InputHandler):
-    def __init__(self, file_address: str, delimiter: str, header_line: int, feature_classes_line: int, na_values: list) -> object:
+    def __init__(self, file_address: str, delimiter: str, header_line: int, feature_classes_line: int,
+                 na_values: list) -> object:
         self.__file = open(file_address)
         self.__delimiter = delimiter
         self.__header_line = header_line
@@ -35,7 +36,8 @@ class DataFileHandler(InputHandler):
     @property
     def data(self) -> pd.DataFrame:
         self.__file.seek(0)
-        return pd.read_csv(self.__file, delimiter=self.__delimiter, header=self.__header_line, na_values = self.__na_values)
+        return pd.read_csv(self.__file, delimiter=self.__delimiter, header=self.__header_line,
+                           na_values=self.__na_values)
 
     @property
     def file(self):
@@ -92,7 +94,8 @@ class QtSqlDBHandler(InputHandler):
 
 
 class SqlAlchemyDBHandler(InputHandler):
-    def __init__(self, db_dialect, dbname: str, username: str, password: str, port, table_name, hostname: str = "127.0.0.1"):
+    def __init__(self, db_dialect, dbname: str, username: str, password: str, port, table_name,
+                 hostname: str = "127.0.0.1"):
         self.__db = None
         self.__db_dialect = db_dialect
         self.__table_name = table_name
@@ -104,7 +107,9 @@ class SqlAlchemyDBHandler(InputHandler):
         self.__connection = None
 
     def configure(self):
-        self.__db = sqlalchemy.create_engine("{}://{}:{}@{}:{}/{}".format(self.__db_dialect, self.__username, self.__password, self.__hostname, self.__port, self.__dbname))
+        self.__db = sqlalchemy.create_engine("{}://{}:{}@{}:{}/{}".format(self.__db_dialect, self.__username,
+                                                                          self.__password, self.__hostname,
+                                                                          self.__port, self.__dbname))
 
     def open(self):
         self.__connection = self.__db.connect()
