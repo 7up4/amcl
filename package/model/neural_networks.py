@@ -16,9 +16,9 @@ class NeuralNetwork:
 
     @classmethod
     def from_scratch(cls, categorical_data: pd.DataFrame, continuous_features: int, hidden_units: int,
-                     noise_rate: float, noisy_column=None, dropout_rate: float=0.2, kernel_initializer: str="uniform"):
+                     noise_rate: float, noisy_column=None, dropout_rate: float=0.2):
         model = NeuralNetwork.build(categorical_data, continuous_features, hidden_units, noisy_column, noise_rate,
-                                    dropout_rate, kernel_initializer)
+                                    dropout_rate)
         return cls(model)
 
     @classmethod
@@ -42,7 +42,8 @@ class NeuralNetwork:
 
     @staticmethod
     def build(categorical_data: pd.DataFrame, continuous_features: int, hidden_units: int, noisy_column: int,
-              noise_rate: float, dropout_rate: float, kernel_initializer: str):
+              noise_rate: float, dropout_rate: float):
+        kernel_initializer = "uniform"
         output_units = 1
         activation = 'relu'
         output_activation = 'sigmoid'

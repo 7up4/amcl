@@ -1,5 +1,5 @@
 from .importing_modules import *
-from .features import ContinuousFeature, CategoricalFeature
+from .metadata import Metadata
 from .input_handlers import InputHandler
 from scipy.stats import chisquare
 from scipy.stats import mannwhitneyu
@@ -23,11 +23,8 @@ class DataSet:
         self.__set_valuable_features()
         self.__set_resulting_feature()
 
-    def get_feature(self, name):
-        if name in self.__features:
-            return self.__features[name]
-        else:
-            return None
+    def get_feature(self, feature):
+        return self.__features.get_feature(feature)
 
     def shuffle(self):
         self.__data = self.__data.sample(frac=1).reset_index(drop=True)
@@ -38,14 +35,10 @@ class DataSet:
     def __create_feature_objects(self):
         feature_names = self.__data.columns.values.tolist()
         feature_classes = self.__feature_classes
-        features_list = {}
         for idx, f in enumerate(feature_names):
-            if feature_classes[idx] == "cont":
-                features_list[f] = ContinuousFeature(name=f)
-            elif feature_classes[idx] == "cat":
+            if feature_classes[idx] == "cat":
                 self.__data[f] = self.__data[f].astype('category')
-                features_list[f] = CategoricalFeature(name=f)
-        return features_list
+        return Metadata(feature_names)
 
     def get_data(self, start=None, stop=None, without_resulting_feature=False):
         if without_resulting_feature:
@@ -58,13 +51,6 @@ class DataSet:
     def get_feature_classes(self):
         return self.__feature_classes
 
-    def get_categorical_features(self):
-        categorical_features = []
-        for name, feature in self.__features.items():
-            if feature.get_type == "Categorical":
-                categorical_features.append(feature)
-        return categorical_features
-
     @property
     def low_risk_groups(self):
         return self.__data.loc[self.__data['num'].isin(self.__low_risk)]
@@ -76,24 +62,29 @@ class DataSet:
     def __set_valuable_features(self):
         harm = self.high_risk_groups
         no_harm = self.low_risk_groups
-        for name, feature in self.__features.items():
-            feature_name = feature.get_name()
-            feature_type = feature.get_type()
-            result = None
-            if feature_type == "Continuous":
-                result = mannwhitneyu(no_harm[feature_name], harm[feature_name], alternative='two-sided')
-            elif feature_type == "Categorical":
-                cp_harm_categories = harm[feature_name].value_counts(sort=False).tolist()
-                cp_no_harm_categories = no_harm[feature_name].value_counts(sort=False).tolist()
+        for feature in self.__features.get_columns():
+            feature_type = self.__data[feature].dtype.name
+            if feature_type == "category":
+                cp_harm_categories = harm[feature].value_counts(sort=False).tolist()
+                cp_no_harm_categories = no_harm[feature].value_counts(sort=False).tolist()
                 result = chisquare(cp_harm_categories, cp_no_harm_categories)
-            feature.set_significance(result)
+            else:
+                result = mannwhitneyu(no_harm[feature], harm[feature], alternative='two-sided')
+            if result:
+                self.__features.set(feature, "statistic", result.statistic)
+                self.__features.set(feature, "pvalue", result.pvalue)
+
+    def remove_invaluable_features(self):
+        for feature in self.__features:
+            if not self.__features.is_valuable(feature):
+                self.__data.drop(columns=feature, inplace=True)
 
     def __set_resulting_feature(self):
-        self.get_feature(self.__resulting_feature).resulting()
+        self.__features.resulting(self.__resulting_feature)
 
     def get_resulting_feature(self):
-        for name, feature in self.__features.items():
-            if feature.is_resulting():
+        for feature in self.__features:
+            if self.__features.get(feature, 'resulting'):
                 return feature
         return None
 
@@ -101,7 +92,7 @@ class DataSet:
         self.__data = self.__data.dropna(axis=0, how='any')
 
     def combine_classes(self, feature_name, from_classes, to_class):
-        if feature_name in self.__features:
+        if self.__features.has_feature(feature_name):
             column = self.__data[feature_name]
             column[column not in from_classes] = to_class
 
@@ -137,7 +128,7 @@ class PreprocessedData:
         self.__dataset = self.__dataset.dropna(axis=0, how='any')
 
     def combine_classes(self, feature_name, from_classes, to_class):
-        if feature_name in self.__features:
+        if feature_name in self.__features.get_columns():
             self.__dataset[feature_name].cat.remove_categories(from_classes, inplace=True)
             self.__dataset[feature_name].fillna(value=to_class, inplace=True)
 
@@ -149,6 +140,7 @@ class PreprocessedData:
         normalized_cont_f = (continuous_features-continuous_features.mean())/continuous_features.std()
         self.__dataset.update(normalized_cont_f)
 
+    # should be deprecated
     def one_hot_encode(self):
         categorical_features = self.__dataset.select_dtypes(include='category')
         if self.__resulting_feature:

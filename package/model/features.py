@@ -1,5 +1,25 @@
-from .importing_modules import *
-
+# class FeaturesList(list):
+#     def __getitem__(self, key):
+#         if isinstance(key, str):
+#             for item in self:
+#                 if item.get_name() == key:
+#                     return item
+#             raise IndexError('no object named {!r}'.format(key))
+#         return list.__getitem__(self, key)
+#
+#     def __missing__(self, key):
+#         if isinstance(key, str):
+#             self[key] = None
+#
+#     def __setitem__(self, key, value):
+#         if isinstance(key, str) and isinstance(value, Feature):
+#             item = self[key]
+#             item[key]=value
+#
+#     def __delitem__(self, key):
+#         if isinstance(key, str):
+#             del self[key]
+#
 
 class Feature:
     def __init__(self, name: str, significance: float = None, resulting: bool = False) -> object:
