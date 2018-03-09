@@ -2,7 +2,7 @@ import sys
 import argparse
 from PyQt5.QtCore import QCoreApplication
 from package.model.input_handlers import SqlAlchemyDBHandler, QtSqlDBHandler, DataFileHandler
-from package.model.datasets import DataSet, PreprocessedData
+from package.model.datasets import DataSet
 from package.model.neural_networks import NeuralNetwork, NNTrainer, NNPredictor
 
 
@@ -37,21 +37,24 @@ if __name__ == '__main__':
 
     if args.input:
         ihandler = DataFileHandler(args.input, ',', 1, 0, ['?'])
-        dataset = DataSet("num", [1, 2, 3], [0], ihandler)
-        dataset.read_data()
+        dataset = DataSet.load("num", ihandler)
+        dataset.drop_invalid_data()
+        dataset.combine_classes(feature_name='num', from_classes=[2, 3, 4], to_class=1)
+        dataset.bucketize('age', 10, list(range(0, 10)))
+        dataset.calculate_statistics([1, 2, 3], [0])
+        dataset.remove_invaluable_features()
+        print(dataset.get_data())
 
         # Preprocess input data
-        preprocessed_data = PreprocessedData(dataset, stop_position=241, resulting_feature='num')
-        preprocessed_data.combine_classes(feature_name='num', from_classes=[2,3,4], to_class=1)
-        preprocessed_data.bucketize('age', 10, list(range(0,10)))
+        preprocessed_data = DataSet.copy(dataset, stop=241)
         preprocessed_data.normalize()
         preprocessed_data.label_categorical_data()
 
         # Prepare data for training
-        training_data = preprocessed_data.get_dataset()
+        training_data = preprocessed_data.get_data()
         cont_data = training_data.select_dtypes(exclude='category').values
         cat_data = training_data.select_dtypes(include='category').drop(columns='num')
-        training_target = preprocessed_data.get_dataset()['num'].values
+        training_target = preprocessed_data.get_data()['num'].values
 
         # Create neural network model
         network = NeuralNetwork.from_scratch(cat_data, cont_data.shape[-1], hidden_units=95, dropout_rate=0.2,
@@ -66,18 +69,16 @@ if __name__ == '__main__':
         trainer.train(verbose=1)
         trainer.evaluate()
 
-        test_data = PreprocessedData(dataset, start_position=242, without_resulting_feature=True)
-        test_data.bucketize('age', 10, list(range(0,10)))
+        test_data = DataSet.copy(dataset, start=242, without_resulting_feature=True)
+        test_data.update_features()
         test_data.normalize()
         test_data.label_categorical_data()
 
-        test_data_cont = test_data.get_dataset().select_dtypes(exclude='category').values
-        test_data_cat = test_data.get_dataset().select_dtypes('category')
+        test_data_cont = test_data.get_data().select_dtypes(exclude='category').values
+        test_data_cat = test_data.get_data().select_dtypes('category')
         test_data_cat = DataSet.dataframe_to_series(test_data_cat)
 
         test_target = dataset.get_data(start=242).dropna(axis=0, how='any')['num']
-        test_target.cat.remove_categories([2,3,4], inplace=True)
-        test_target.fillna(value=1, inplace=True)
         test_target = test_target.values
 
         # Create predictor and make some predictions

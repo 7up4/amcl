@@ -18,7 +18,7 @@ class Metadata:
         current_columns = self._table.columns.tolist()
         dropped_columns = list(set(current_columns) - set(updated_columns))
         added_columns = list(set(updated_columns) - set(current_columns))
-        self._table.drop(columns=dropped_columns)
+        self._table.drop(columns=dropped_columns, inplace=True)
         for col in added_columns:
             self._table[col] = None
 
