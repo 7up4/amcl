@@ -2,7 +2,7 @@ import pandas as pd
 
 
 class Metadata:
-    def __init__(self, columns: list) -> object:
+    def __init__(self, columns: list):
         self._significance = 'significance'
         self._statistic = 'statistic'
         self._resulting = 'resulting'
@@ -26,7 +26,7 @@ class Metadata:
         return self._table.columns.tolist()
 
     def get_feature(self, feature):
-        return self.__table[feature]
+        return self._table[feature]
 
     def has_feature(self, feature):
         return feature in self._table.columns.tolist()
@@ -68,4 +68,3 @@ class Metadata:
 
     def not_resulting(self, feature):
         self._table[feature]['resulting'] = False
-

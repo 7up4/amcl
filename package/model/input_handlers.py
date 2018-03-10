@@ -19,7 +19,7 @@ class InputHandler(object):
 
 class DataFileHandler(InputHandler):
     def __init__(self, file_address: str, delimiter: str, header_line: int, feature_classes_line: int,
-                 na_values: list) -> object:
+                 na_values: list):
         self.__file = open(file_address)
         self.__delimiter = delimiter
         self.__header_line = header_line
@@ -44,7 +44,7 @@ class DataFileHandler(InputHandler):
         return self.__file
 
     @file.setter
-    def open_file(self, file_address):
+    def file(self, file_address):
         self.__file = open(file_address)
 
 
@@ -88,9 +88,10 @@ class QtSqlDBHandler(InputHandler):
                     d[i].append(query.value(i))
             return pd.DataFrame(data=d)
 
+    # Not implemented yet
     @property
     def future_classes(self):
-        pass
+        return
 
 
 class SqlAlchemyDBHandler(InputHandler):
@@ -125,6 +126,7 @@ class SqlAlchemyDBHandler(InputHandler):
             features = ",".join(features)
             return pd.read_sql_query("SELECT {} FROM {};".format(features, self.__table_name), self.__connection)
 
+    # Not implemented yet
     @property
     def future_classes(self):
-        pass
+        return

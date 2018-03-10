@@ -43,7 +43,6 @@ if __name__ == '__main__':
         dataset.bucketize('age', 10, list(range(0, 10)))
         dataset.calculate_statistics([1, 2, 3], [0])
         dataset.remove_invaluable_features()
-        print(dataset.get_data())
 
         # Preprocess input data
         preprocessed_data = DataSet.copy(dataset, stop=241)
@@ -57,8 +56,7 @@ if __name__ == '__main__':
         training_target = preprocessed_data.get_data()['num'].values
 
         # Create neural network model
-        network = NeuralNetwork.from_scratch(cat_data, cont_data.shape[-1], hidden_units=95, dropout_rate=0.2,
-                                             noise_rate=0.2)
+        network = NeuralNetwork.from_scratch(cat_data, cont_data.shape[-1], hidden_units=95, dropout_rate=0.2)
         network.save_plot('model_plot.png')
         network.compile(loss='binary_crossentropy', optimizer='adam')
 

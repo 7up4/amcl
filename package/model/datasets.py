@@ -20,15 +20,15 @@ class DataSet:
 
     @classmethod
     def load(cls, resulting_feature: str, input_handler: InputHandler):
-        data = input_handler.data
+        dataset = input_handler.data
         feature_classes = input_handler.feature_classes
-        feature_names = data.columns.tolist()
+        feature_names = dataset.columns.tolist()
         for idx, f in enumerate(feature_names):
             if feature_classes[idx] == "cat":
-                data[f] = data[f].astype('category')
+                dataset[f] = dataset[f].astype('category')
         features = Metadata(feature_names)
         features.resulting(resulting_feature)
-        return cls(data, features)
+        return cls(dataset, features)
 
     def calculate_statistics(self, high_risk: list, low_risk: list):
         data = self.__data
@@ -45,7 +45,6 @@ class DataSet:
             if result:
                 self.__features.set(feature, "statistic", result.statistic)
                 self.__features.set(feature, "pvalue", result.pvalue)
-
 
     def update_features(self):
         self.__features.update(self.__data.columns.tolist())
@@ -67,17 +66,6 @@ class DataSet:
     def get_features(self):
         return self.__features
 
-    def get_feature_classes(self):
-        return self.__feature_classes
-
-    @property
-    def low_risk_groups(self):
-        return self.__data.loc[self.__data['num'].isin(self.__low_risk)]
-
-    @property
-    def high_risk_groups(self):
-        return self.__data.loc[self.__data['num'].isin(self.__high_risk)]
-
     def remove_invaluable_features(self):
         for feature in self.__features.get_columns():
             if not self.__features.is_valuable(feature):
@@ -90,6 +78,9 @@ class DataSet:
             if self.__features.get(feature, 'resulting') == True:
                 return feature
         return None
+
+    def get_categorical_features_size(self):
+        return [self.__data[x].cat.categories.size for x in self.__data.select_dtypes(include='category')]
 
     def drop_invalid_data(self):
         self.__data = self.__data.dropna(axis=0, how='any')

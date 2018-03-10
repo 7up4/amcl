@@ -16,9 +16,9 @@ class NeuralNetwork:
 
     @classmethod
     def from_scratch(cls, categorical_data: pd.DataFrame, continuous_features: int, hidden_units: int,
-                     noise_rate: float, noisy_column=None, dropout_rate: float=0.2):
-        model = NeuralNetwork.build(categorical_data, continuous_features, hidden_units, noisy_column, noise_rate,
-                                    dropout_rate)
+                     noise_rate: float = None, noisy_column=None, embedding_size: int = 10, dropout_rate: float=0.2):
+        model = NeuralNetwork._build(categorical_data, continuous_features, hidden_units, embedding_size, noisy_column,
+                                     noise_rate, dropout_rate)
         return cls(model)
 
     @classmethod
@@ -27,29 +27,35 @@ class NeuralNetwork:
         return cls(model)
 
     @staticmethod
-    def __add_noise_to_column(x, column, rate):
+    def _add_noise_to_column(x, column, rate):
         if column == -1:
             return x
         noised_column = tf.slice(x, begin=[0, column], size=[-1, 1])
         left_part = tf.slice(x, [0, 0], [-1, column])
         right_part = tf.slice(x, [0, column + 1], [-1, -1])
-        noised_column *= (1 + rate)
+        noised_column = NeuralNetwork._add_noise(noised_column, rate)
         return tf.concat(values=[left_part, noised_column, right_part], axis=1)
 
     @staticmethod
-    def __add_noise(x, rate):
+    def _add_noise(x, rate):
         return x * (1 + rate)
 
     @staticmethod
-    def build(categorical_data: pd.DataFrame, continuous_features: int, hidden_units: int, noisy_column: int,
-              noise_rate: float, dropout_rate: float):
+    def _build(categorical_data: pd.DataFrame, continuous_features: int, hidden_units: int, embedding_size: int,
+               noisy_column, noise_rate: float, dropout_rate: float):
         kernel_initializer = "uniform"
         output_units = 1
         activation = 'relu'
         output_activation = 'sigmoid'
-        if noisy_column:
-            noise_layer = Lambda(NeuralNetwork.__add_noise_to_column, arguments={'column': noisy_column,
-                                                                                 'rate': noise_rate})
+
+        # create input layer for continuous data
+        continuous_input = Input(shape=(continuous_features,), name="continous_input")
+        if noisy_column and isinstance(noisy_column, int):
+            noise_layer = Lambda(NeuralNetwork._add_noise_to_column, arguments={'column': noisy_column,
+                                                                                'rate': noise_rate})
+            continuous_input = noise_layer(continuous_input)
+            noisy_column = None
+        reshaped_continuous_input = Reshape((1, continuous_features), name="reshaped_continuous_input")(continuous_input)
 
         # create input layers complemented by embedding layers to handle categorical features
         embedding_layers = []
@@ -57,16 +63,11 @@ class NeuralNetwork:
         for i in categorical_data:
             categorical_input = Input((1,))
             categorical_inputs.append(categorical_input)
-            categorical_noisy_layer = Lambda(NeuralNetwork.__add_noise, arguments={'rate': noise_rate})
-            embedding_layer = Embedding(categorical_data[i].cat.categories.size + 1, 10)(categorical_input)
-            noisy_embedding_input = categorical_noisy_layer(embedding_layer)
-            embedding_layers.append(noisy_embedding_input)
-
-        # create input layer for continuous data
-        continuous_input = Input(shape=(continuous_features,))
-        if noisy_column:
-            continuous_input = noise_layer(continuous_input)
-        reshaped_continuous_input = Reshape((1, continuous_features))(continuous_input)
+            embedding_layer = Embedding(categorical_data[i].cat.categories.size + 1, embedding_size, name=i)(categorical_input)
+            if noisy_column == i:
+                categorical_noisy_layer = Lambda(NeuralNetwork._add_noise, arguments={'rate': noise_rate})
+                embedding_layer = categorical_noisy_layer(embedding_layer)
+            embedding_layers.append(embedding_layer)
 
         # merge all inputs
         merge_layer = Concatenate()(embedding_layers + [reshaped_continuous_input])
