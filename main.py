@@ -3,7 +3,7 @@ import argparse
 from PyQt5.QtCore import QCoreApplication
 from package.model.input_handlers import SqlAlchemyDBHandler, QtSqlDBHandler, DataFileHandler
 from package.model.datasets import DataSet
-from package.model.neural_networks import NeuralNetwork, NNTrainer, NNPredictor
+from package.model.neural_networks import NeuralNetwork, NNTrainer, NNPredictor, FeatureSelector
 
 
 if __name__ == '__main__':
@@ -66,6 +66,8 @@ if __name__ == '__main__':
         trainer = NNTrainer(network, [*cat_data, cont_data], training_target, epochs=100)
         trainer.train(verbose=1)
         trainer.evaluate()
+
+        feature_selector = FeatureSelector(network, training_data.select_dtypes(include='category').drop(columns='num'))
 
         test_data = DataSet.copy(dataset, start=242, without_resulting_feature=True)
         test_data.update_features()
