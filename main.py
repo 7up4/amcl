@@ -3,7 +3,7 @@ import argparse
 from PyQt5.QtCore import QCoreApplication
 from package.model.input_handlers import SqlAlchemyDBHandler, QtSqlDBHandler, DataFileHandler
 from package.model.datasets import DataSet
-from package.model.neural_networks import NeuralNetwork, NNTrainer, NNPredictor, FeatureSelector
+from package.model.neural_networks import NeuralNetwork, NNTrainer, NNPredictor, FeatureSelector, NeuralNetworkConfig
 
 
 if __name__ == '__main__':
@@ -56,7 +56,8 @@ if __name__ == '__main__':
         training_target = preprocessed_data.get_data()['num'].values
 
         # Create neural network model
-        network = NeuralNetwork.from_scratch(cat_data, cont_data.shape[-1], hidden_units=95, dropout_rate=0.2)
+        config = NeuralNetworkConfig()
+        network = NeuralNetwork.from_scratch(config, cat_data, cont_data.shape[-1], hidden_units=95, dropout_rate=0.2)
         network.save_plot('model_plot.png')
         network.compile(loss='binary_crossentropy', optimizer='adam')
 
@@ -66,8 +67,7 @@ if __name__ == '__main__':
         trainer = NNTrainer(network, [*cat_data, cont_data], training_target, epochs=100)
         trainer.train(verbose=1)
         trainer.evaluate()
-
-        feature_selector = FeatureSelector(network, training_data.select_dtypes(include='category').drop(columns='num'))
+        feature_selector = FeatureSelector(config, network, training_data.select_dtypes(include='category').drop(columns='num'))
 
         test_data = DataSet.copy(dataset, start=242, without_resulting_feature=True)
         test_data.update_features()

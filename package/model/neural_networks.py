@@ -1,11 +1,29 @@
 from .importing_modules import *
-import re
-from keras.models import load_model, model_from_json, model_from_yaml, Model, clone_model
+from keras.models import load_model, model_from_json, model_from_yaml, Model
 from keras.layers import Concatenate, Input, Embedding, Lambda
 from keras.layers.core import Dense, Dropout, Reshape
 from keras.utils.vis_utils import plot_model
 import tensorflow as tf
 from keras.callbacks import TensorBoard
+
+
+class NeuralNetworkConfig:
+    def __init__(self, categorical_input: str="cat_input", continuous_input: str="cont_input", output: str="output",
+                 reshaped_output: str="reshaped_output", noisy_layer: str="noisy", kernel_initializer: str="uniform",
+                 hidden: str = "hidden", reshaped: str="reshaped", dropout: str="dropout", merge: str="merge",
+                 activation: str="relu", output_activation: str="sigmoid"):
+        self.kernel_initializer = kernel_initializer
+        self.activation = activation
+        self.output_activation = output_activation
+        self.cont_input = continuous_input
+        self.cat_input = categorical_input
+        self.hidden = hidden
+        self.noisy_layer = noisy_layer
+        self.reshaped = reshaped
+        self.merge = merge
+        self.dropout = dropout
+        self.output = output
+        self.reshaped_output = reshaped_output
 
 
 class NeuralNetwork:
@@ -16,9 +34,9 @@ class NeuralNetwork:
         return self.__model
 
     @classmethod
-    def from_scratch(cls, categorical_data, continuous_features: int, hidden_units: int,
+    def from_scratch(cls, config: NeuralNetworkConfig, categorical_data, continuous_features: int, hidden_units: int,
                      noise_rate: float=None, noisy_column=None, embedding_size: int=10, dropout_rate: float=0.2,
-                     kernel_initializer="uniform", output_units=1):
+                     output_units=1):
 
         if isinstance(categorical_data, pd.DataFrame):
             categorical_data_categories = {}
@@ -26,8 +44,8 @@ class NeuralNetwork:
                 categorical_data_categories[column] = categorical_data[column].cat.categories.size
             categorical_data = categorical_data_categories
 
-        model = NeuralNetwork._build(categorical_data, continuous_features, hidden_units, embedding_size, noisy_column,
-                                     noise_rate, dropout_rate, kernel_initializer, output_units)
+        model = NeuralNetwork._build(config, categorical_data, continuous_features, hidden_units, embedding_size, noisy_column,
+                                     noise_rate, dropout_rate, output_units)
         return cls(model)
 
     @classmethod
@@ -50,60 +68,69 @@ class NeuralNetwork:
         return x * (1 + rate)
 
     @staticmethod
-    def _build(categorical_data_categories, continuous_features: int, hidden_units: int, embedding_size: int,
-               noisy_column, noise_rate: float, dropout_rate: float, kernel_initializer: str, output_units: int):
-        activation = 'relu'
-        output_activation = 'sigmoid'
+    def _build(config, categorical_data_categories, continuous_features: int, hidden_units: int, embedding_size: int,
+               noisy_column, noise_rate, dropout_rate, output_units: int):
 
         # create input layer for continuous data
-        continuous_input = Input(shape=(continuous_features,), name="continuous_input")
+        continuous_input = Input(shape=(continuous_features,), name=config.cont_input)
         if noisy_column and isinstance(noisy_column, int):
             noise_layer = Lambda(NeuralNetwork._add_noise_to_column, arguments={'column': noisy_column,
                                                                                 'rate': noise_rate},
-                                 name=str(noisy_column)+"noisy_layer")
+                                 name=str(noisy_column)+config.noisy_layer)
 
             continuous_input = noise_layer(continuous_input)
             noisy_column = None
         reshaped_continuous_input = Reshape((1, continuous_features),
-                                            name="reshaped_continuous_input")(continuous_input)
+                                            name=config.reshaped)(continuous_input)
 
         # create input layers complemented by embedding layers to handle categorical features
         embedding_layers = []
         categorical_inputs = []
         for feature, size in categorical_data_categories.items():
-            categorical_input = Input((1,), name="cat_input_"+feature)
+            categorical_input = Input((1,), name=config.cat_input+feature)
             categorical_inputs.append(categorical_input)
             embedding_layer = Embedding(size + 1, embedding_size, name=feature)(categorical_input)
             if noisy_column == feature:
                 categorical_noisy_layer = Lambda(NeuralNetwork._add_noise, arguments={'rate': noise_rate},
-                                                 name=str(noisy_column)+"noisy_layer")
+                                                 name=str(noisy_column)+config.noisy_layer)
                 embedding_layer = categorical_noisy_layer(embedding_layer)
             embedding_layers.append(embedding_layer)
 
         # merge all inputs
-        merge_layer = Concatenate(name="merge_layer")(embedding_layers + [reshaped_continuous_input])
+        merge_layer = Concatenate(name=config.merge)(embedding_layers + [reshaped_continuous_input])
 
         # hidden layers
-        hidden_layer1 = Dense(hidden_units, activation=activation, kernel_initializer=kernel_initializer,
-                              name="hidden_layer1")(merge_layer)
-        dropout_layer1 = Dropout(dropout_rate, name="dropout_layer1")(hidden_layer1)
+        hidden_layer1 = Dense(hidden_units, activation=config.activation, kernel_initializer=config.kernel_initializer,
+                              name=config.hidden+"1")(merge_layer)
+        dropout_layer1 = Dropout(dropout_rate, name=config.dropout+"1")(hidden_layer1)
 
         # output_layer
-        output_layer = Dense(output_units, activation=output_activation, name="output_layer")(dropout_layer1)
+        output_layer = Dense(output_units, activation=config.output_activation, name=config.output)(dropout_layer1)
 
         # add reshape layer since output should be vector
-        output_layer = Reshape((1,), name="reshaped_output_layer")(output_layer)
+        output_layer = Reshape((1,), name=config.reshaped_output)(output_layer)
 
         # create final model
         model = Model(inputs=categorical_inputs + [continuous_input], outputs=output_layer)
         return model
 
+    def get_layer(self, name):
+        return self.__model.get_layer(name)
+
     def get_weights(self):
+        return self.__model.get_weights()
+
+    def get_weights_by_name(self):
+        model = self.__model
+        names = [layer.name for layer in model.layers]
         weights = []
-        for layer in self.__model.layers:
-            layer_weights = layer.get_weights()
-            weights.append(layer_weights)
-        return weights
+        for name in names:
+            weights.append(model.get_layer(name).get_weights())
+        return dict(zip(names, weights))
+
+    def set_weights_by_name(self, weigths):
+        for name, weigth in weigths.items():
+            self.__model.get_layer(name).set_weights(weigth)
 
     def save_plot(self, to_file='model_plot.png', shapes=True, layer_names=True):
         plot_model(self.__model, to_file=to_file, show_shapes=shapes, show_layer_names=layer_names)
@@ -126,38 +153,24 @@ class NeuralNetwork:
 
 
 class FeatureSelector:
-    def __init__(self, nnet: NeuralNetwork, categorical_data):
-        self._nnet = nnet
-        self._weights = FeatureSelector._get_w(nnet)
-        self._cat_data = categorical_data
-        self._cat_input_shape = self._nnet.get_model().get_layer("cat_input_age").get_input_shape_at(0)
-        self._cont_input_shape = self._nnet.get_model().get_layer("continuous_input").get_input_shape_at(0)[-1]
-        self._hid_size = self._nnet.get_model().get_layer("hidden_layer1").get_output_shape_at(0)[-1]
-        self._emb_size = self._nnet.get_model().get_layer("age").get_output_shape_at(0)[-1]
-        self._dropout_rate = self._nnet.get_model().get_layer("dropout_layer1").get_config()['rate']
-        self._build_network()
+    def __init__(self, config: NeuralNetworkConfig, nnet: NeuralNetwork, categorical_data):
+        self._source_model = nnet
+        self._weights = self._source_model.get_weights_by_name()
+        self._cat_input_shape = self._source_model.get_layer(config.cat_input+"age").get_input_shape_at(0)
+        self._cont_input_shape = self._source_model.get_layer(config.cont_input).get_input_shape_at(0)[-1]
+        self._hid_size = self._source_model.get_layer(config.hidden+"1").get_output_shape_at(0)[-1]
+        self._emb_size = self._source_model.get_layer("age").get_output_shape_at(0)[-1]
+        self._dropout_rate = self._source_model.get_layer(config.dropout+"1").get_config()['rate']
+        self._noisy_model = self._build_network(config, categorical_data)
 
-    def _build_network(self):
-        m = NeuralNetwork.from_scratch(categorical_data=self._cat_data, continuous_features=self._cont_input_shape,
-                                       hidden_units=self._hid_size, embedding_size=self._emb_size,
-                                       dropout_rate=self._dropout_rate, noise_rate=100, noisy_column="age")
-        m.save_plot("noisy_model_plot.png", shapes=True, layer_names=True)
-        FeatureSelector._set_w(m, self._weights)
-
-    @staticmethod
-    def _get_w(nnet):
-        model = nnet.get_model()
-        names = [re.match("[^/]*", weight.name).group() for layer in model.layers for weight in layer.weights]
-        weights = []
-        for i in names:
-            weights.append(model.get_layer(i).get_weights())
-        return dict(zip(names, weights))
-
-    @staticmethod
-    def _set_w(nnet, weigths):
-        model = nnet.get_model()
-        for name, weigth in weigths.items():
-            model.get_layer(name).set_weights(weigth)
+    def _build_network(self, config, cat_data):
+        noisy_model = NeuralNetwork.from_scratch(config=config, categorical_data=cat_data,
+                                                 continuous_features=self._cont_input_shape,
+                                                 hidden_units=self._hid_size, embedding_size=self._emb_size,
+                                                 dropout_rate=self._dropout_rate, noise_rate=100, noisy_column="age")
+        noisy_model.save_plot("noisy_model_plot.png", shapes=True, layer_names=True)
+        noisy_model.set_weights_by_name(self._weights)
+        return noisy_model
 
 
 class NNTrainer:
