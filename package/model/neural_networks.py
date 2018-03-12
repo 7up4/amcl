@@ -1,10 +1,11 @@
-from .importing_modules import *
-from keras.models import load_model, model_from_json, model_from_yaml, Model
+import tensorflow as tf
 from keras.layers import Concatenate, Input, Embedding, Lambda
 from keras.layers.core import Dense, Dropout, Reshape
+from keras.models import load_model, model_from_json, model_from_yaml, Model
 from keras.utils.vis_utils import plot_model
-import tensorflow as tf
-from keras.callbacks import TensorBoard
+
+from .datasets import DataSet
+from .importing_modules import *
 
 
 class NeuralNetworkConfig:
@@ -44,8 +45,8 @@ class NeuralNetwork:
                 categorical_data_categories[column] = categorical_data[column].cat.categories.size
             categorical_data = categorical_data_categories
 
-        model = NeuralNetwork._build(config, categorical_data, continuous_features, hidden_units, embedding_size, noisy_column,
-                                     noise_rate, dropout_rate, output_units)
+        model = NeuralNetwork._build(config, categorical_data, continuous_features, hidden_units, embedding_size,
+                                     noisy_column, noise_rate, dropout_rate, output_units)
         return cls(model)
 
     @classmethod
@@ -153,24 +154,37 @@ class NeuralNetwork:
 
 
 class FeatureSelector:
-    def __init__(self, config: NeuralNetworkConfig, nnet: NeuralNetwork, categorical_data):
+    def __init__(self, config: NeuralNetworkConfig, nnet: NeuralNetwork, noisy_columns, cat_columns: list):
         self._source_model = nnet
+        self._config = config
         self._weights = self._source_model.get_weights_by_name()
         self._cat_input_shape = self._source_model.get_layer(config.cat_input+"age").get_input_shape_at(0)
         self._cont_input_shape = self._source_model.get_layer(config.cont_input).get_input_shape_at(0)[-1]
         self._hid_size = self._source_model.get_layer(config.hidden+"1").get_output_shape_at(0)[-1]
         self._emb_size = self._source_model.get_layer("age").get_output_shape_at(0)[-1]
         self._dropout_rate = self._source_model.get_layer(config.dropout+"1").get_config()['rate']
-        self._noisy_model = self._build_network(config, categorical_data)
+        self._noisy_columns = noisy_columns
+        self._cat_data = {}
+        for x in cat_columns:
+            self._cat_data[x] = self._source_model.get_layer(x).get_config()["input_dim"] - 1
 
-    def _build_network(self, config, cat_data):
-        noisy_model = NeuralNetwork.from_scratch(config=config, categorical_data=cat_data,
+    def _build_network(self, config, noisy_column, noise_rate=0.1):
+        noisy_model = NeuralNetwork.from_scratch(config=config, categorical_data=self._cat_data,
                                                  continuous_features=self._cont_input_shape,
                                                  hidden_units=self._hid_size, embedding_size=self._emb_size,
-                                                 dropout_rate=self._dropout_rate, noise_rate=100, noisy_column="age")
+                                                 dropout_rate=self._dropout_rate, noise_rate=noise_rate,
+                                                 noisy_column=noisy_column)
         noisy_model.save_plot("noisy_model_plot.png", shapes=True, layer_names=True)
         noisy_model.set_weights_by_name(self._weights)
         return noisy_model
+
+    def run(self, dataset, test_target):
+        for column in self._noisy_columns:
+            noisy_model = self._build_network(self._config, noisy_column=column)
+            predictor = NNPredictor(noisy_model, dataset)
+            predictor.predict()
+            predictor.evaluate(test_target)
+            print(predictor.get_score())
 
 
 class NNTrainer:
@@ -196,25 +210,32 @@ class NNTrainer:
 
 
 class NNPredictor:
-    def __init__(self, nnet: NeuralNetwork, dataset):
-        self.__nnet = nnet
-        self.__dataset = dataset
-        self.__score = {}
-        self.__prediction = []
+    def __init__(self, nnet: NeuralNetwork, dataset: pd.DataFrame):
+        self._nnet = nnet
+        self._dataset = dataset
+        self._score = {}
+        self._prediction = []
+        self._preprocess()
+
+    def _preprocess(self):
+        test_data_cont = self._dataset.get_data().select_dtypes(exclude='category').values
+        test_data_cat = self._dataset.get_data().select_dtypes('category')
+        test_data_cat = DataSet.dataframe_to_series(test_data_cat)
+        self._dataset = [*test_data_cat, test_data_cont]
 
     def predict(self):
-        self.__prediction = self.__nnet.get_model().predict(self.__dataset).flatten()
+        self._prediction = self._nnet.get_model().predict(self._dataset).flatten()
 
     def evaluate(self, real_values):
-        if len(self.__prediction) > 0:
-            compared = np.equal(np.round(self.__prediction), real_values)
-            self.__score['correct'] = np.count_nonzero(compared)
-            self.__score['total'] = len(self.__prediction)
-            self.__score['wrong'] = self.__score['total'] - self.__score['correct']
-            self.__score['score'] = self.__score['correct'] / self.__score['total']
+        if len(self._prediction) > 0:
+            compared = np.equal(np.round(self._prediction), real_values)
+            self._score['correct'] = np.count_nonzero(compared)
+            self._score['total'] = len(self._prediction)
+            self._score['wrong'] = self._score['total'] - self._score['correct']
+            self._score['score'] = self._score['correct'] / self._score['total']
 
     def get_score(self):
-        return self.__score
+        return self._score
 
     def get_prediction(self):
-        return self.__prediction
+        return self._prediction

@@ -14,7 +14,8 @@ docs
 # ignore some projecting stuff
 ui
 
-# ignore model_plot.png
-model_plot.png
+# ignore pictures
+*.png
 
+# ignore pycache files
 *.pyc

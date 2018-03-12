@@ -1,10 +1,11 @@
-import sys
 import argparse
-from PyQt5.QtCore import QCoreApplication
-from package.model.input_handlers import SqlAlchemyDBHandler, QtSqlDBHandler, DataFileHandler
-from package.model.datasets import DataSet
-from package.model.neural_networks import NeuralNetwork, NNTrainer, NNPredictor, FeatureSelector, NeuralNetworkConfig
+import sys
 
+from PyQt5.QtCore import QCoreApplication
+
+from package.model.datasets import DataSet
+from package.model.input_handlers import SqlAlchemyDBHandler, QtSqlDBHandler, DataFileHandler
+from package.model.neural_networks import NeuralNetwork, NNTrainer, FeatureSelector, NeuralNetworkConfig, NNPredictor
 
 if __name__ == '__main__':
     app = QCoreApplication(sys.argv)
@@ -25,15 +26,10 @@ if __name__ == '__main__':
         qtdb = QtSqlDBHandler("postgres", "nurlan", "your_password", 5432, "dataset")
         qtdb.configure()
         qtdb.open()
-        ddd = qtdb.data("age", "sex", "cp", "trestbps", "chol", "fbs", "restecg", "thalach", "exang", "oldpeak", "slope", "ca", "thal", "num")
+        ddd = qtdb.data("age", "sex", "cp", "trestbps", "chol", "fbs", "restecg", "thalach", "exang", "oldpeak",
+                        "slope", "ca", "thal", "num")
         qtdb.close()
         print(ddd)
-
-    def files():
-        ihandler = DataFileHandler(args.input, ',', 1, 0, ['?'])
-        sample = DataSet("num", [1, 2, 3], [0], ihandler)
-        sample.read_data()
-        print(sample.get_feature("num").is_resulting())
 
     if args.input:
         ihandler = DataFileHandler(args.input, ',', 1, 0, ['?'])
@@ -67,25 +63,26 @@ if __name__ == '__main__':
         trainer = NNTrainer(network, [*cat_data, cont_data], training_target, epochs=100)
         trainer.train(verbose=1)
         trainer.evaluate()
-        feature_selector = FeatureSelector(config, network, training_data.select_dtypes(include='category').drop(columns='num'))
 
         test_data = DataSet.copy(dataset, start=242, without_resulting_feature=True)
         test_data.update_features()
         test_data.normalize()
         test_data.label_categorical_data()
 
-        test_data_cont = test_data.get_data().select_dtypes(exclude='category').values
-        test_data_cat = test_data.get_data().select_dtypes('category')
-        test_data_cat = DataSet.dataframe_to_series(test_data_cat)
-
         test_target = dataset.get_data(start=242).dropna(axis=0, how='any')['num']
         test_target = test_target.values
 
-        # Create predictor and make some predictions
-        predictor = NNPredictor(network, [*test_data_cat, test_data_cont])
-        predictor.predict()
-        predictor.evaluate(test_target)
-        print(predictor.get_score())
+        feature_selector = FeatureSelector(config, network, training_data.select_dtypes(include='category').
+                                           drop(columns='num').columns.tolist(),
+                                           training_data.select_dtypes(include='category').drop(
+                                               columns='num').columns.tolist())
+        feature_selector.run(test_data, test_target)
+
+        # # Create predictor and make some predictions
+        # predictor = NNPredictor(network, test_data)
+        # predictor.predict()
+        # predictor.evaluate(test_target)
+        # print(predictor.get_score())
 
         # columns = preprocessed_data.get_columns()
         # for column in columns:
