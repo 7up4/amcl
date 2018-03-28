@@ -28,6 +28,9 @@ class Metadata:
     def get_feature(self, feature):
         return self._table[feature]
 
+    def drop_features(self, features):
+        self._table.drop(features, inplace=True, axis=1)
+
     def has_feature(self, feature):
         return feature in self._table.columns.tolist()
 
@@ -36,6 +39,13 @@ class Metadata:
 
     def get_attribute_names(self):
         return self._table.index
+
+    def get_less_sensitive_feature(self):
+        sensitivities = self._table.loc[self._sensitivity].to_dict()
+        return min(sensitivities, key=sensitivities.get)
+
+    def set_sensitivity(self, feature, sensitivity):
+        self._table[feature][self._sensitivity] = sensitivity
 
     def rename_features(self, feature_names, new_names):
         delta = dict(zip(feature_names, new_names))

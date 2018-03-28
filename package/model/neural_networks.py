@@ -12,7 +12,7 @@ class NeuralNetworkConfig:
     def __init__(self, categorical_input: str="cat_input", continuous_input: str="cont_input", output: str="output",
                  reshaped_output: str="reshaped_output", noisy_layer: str="noisy", kernel_initializer: str="uniform",
                  hidden: str = "hidden", reshaped: str="reshaped", dropout: str="dropout", merge: str="merge",
-                 activation: str="relu", output_activation: str="sigmoid"):
+                 activation: str="sigmoid", output_activation: str="sigmoid"):
         self.kernel_initializer = kernel_initializer
         self.activation = activation
         self.output_activation = output_activation
@@ -158,17 +158,17 @@ class FeatureSelector:
         self._source_model = nnet
         self._config = config
         self._weights = self._source_model.get_weights_by_name()
-        self._cat_input_shape = self._source_model.get_layer(config.cat_input+"age").get_input_shape_at(0)
+        self._cat_input_shape = self._source_model.get_layer(config.cat_input+cat_columns[0]).get_input_shape_at(0)
         self._cont_input_shape = self._source_model.get_layer(config.cont_input).get_input_shape_at(0)[-1]
         self._hid_size = self._source_model.get_layer(config.hidden+"1").get_output_shape_at(0)[-1]
-        self._emb_size = self._source_model.get_layer("age").get_output_shape_at(0)[-1]
+        self._emb_size = self._source_model.get_layer(cat_columns[0]).get_output_shape_at(0)[-1]
         self._dropout_rate = self._source_model.get_layer(config.dropout+"1").get_config()['rate']
         self._noisy_columns = noisy_columns
         self._cat_data = {}
         for x in cat_columns:
             self._cat_data[x] = self._source_model.get_layer(x).get_config()["input_dim"] - 1
 
-    def _build_network(self, config, noisy_column, noise_rate=0.1):
+    def _build_network(self, config, noisy_column, noise_rate=0.01):
         noisy_model = NeuralNetwork.from_scratch(config=config, categorical_data=self._cat_data,
                                                  continuous_features=self._cont_input_shape,
                                                  hidden_units=self._hid_size, embedding_size=self._emb_size,
@@ -178,16 +178,23 @@ class FeatureSelector:
         noisy_model.set_weights_by_name(self._weights)
         return noisy_model
 
-    def run(self, dataset, test_target):
+    def run(self, dataset, prediction, n=10):
         for column in self._noisy_columns:
             noisy_model = self._build_network(self._config, noisy_column=column)
-            predictor = NNPredictor(noisy_model, dataset)
-            predictor.predict()
-            predictor.evaluate(test_target)
-            print(predictor.get_score())
+            predictor = Predictor(noisy_model, dataset)
+            sensitivity = 0
+            for i in range(n):
+                print(i+1, ": adding noise to column ", column)
+                noisy_prediction = predictor.predict()
+                delta = abs(np.sum(noisy_prediction) - np.sum(prediction))
+                sensitivity += delta
+            sensitivity /= n
+            dataset.get_features().set_sensitivity(column, sensitivity)
+            print(dataset.get_features().get_table())
+        dataset.rm_less_sensitive()
 
 
-class NNTrainer:
+class Trainer:
     def __init__(self, nnet: NeuralNetwork, training_data, target_data, batch_size=16, epochs=1000):
         self.__nnet = nnet
         self.__training_data = training_data
@@ -209,7 +216,7 @@ class NNTrainer:
         return self.__score
 
 
-class NNPredictor:
+class Predictor:
     def __init__(self, nnet: NeuralNetwork, dataset: pd.DataFrame):
         self._nnet = nnet
         self._dataset = dataset
@@ -225,6 +232,7 @@ class NNPredictor:
 
     def predict(self):
         self._prediction = self._nnet.get_model().predict(self._dataset).flatten()
+        return self._prediction
 
     def evaluate(self, real_values):
         if len(self._prediction) > 0:

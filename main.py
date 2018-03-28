@@ -5,7 +5,7 @@ from PyQt5.QtCore import QCoreApplication
 
 from package.model.datasets import DataSet
 from package.model.input_handlers import SqlAlchemyDBHandler, QtSqlDBHandler, DataFileHandler
-from package.model.neural_networks import NeuralNetwork, NNTrainer, FeatureSelector, NeuralNetworkConfig, NNPredictor
+from package.model.neural_networks import NeuralNetwork, Trainer, FeatureSelector, NeuralNetworkConfig, Predictor
 
 if __name__ == '__main__':
     app = QCoreApplication(sys.argv)
@@ -35,6 +35,7 @@ if __name__ == '__main__':
         ihandler = DataFileHandler(args.input, ',', 1, 0, ['?'])
         dataset = DataSet.load("num", ihandler)
         dataset.drop_invalid_data()
+        # dataset.shuffle()
         dataset.combine_classes(feature_name='num', from_classes=[2, 3, 4], to_class=1)
         dataset.bucketize('age', 10, list(range(0, 10)))
         dataset.calculate_statistics([1, 2, 3], [0])
@@ -60,7 +61,7 @@ if __name__ == '__main__':
         cat_data = DataSet.dataframe_to_series(cat_data)
 
         # Create trainer and train a little
-        trainer = NNTrainer(network, [*cat_data, cont_data], training_target, epochs=100)
+        trainer = Trainer(network, [*cat_data, cont_data], training_target, epochs=100)
         trainer.train(verbose=1)
         trainer.evaluate()
 
@@ -72,17 +73,17 @@ if __name__ == '__main__':
         test_target = dataset.get_data(start=242).dropna(axis=0, how='any')['num']
         test_target = test_target.values
 
+        # Create predictor and make some predictions
+        predictor = Predictor(network, test_data)
+        prediction = predictor.predict()
+        predictor.evaluate(test_target)
+        print(predictor.get_score())
+
         feature_selector = FeatureSelector(config, network, training_data.select_dtypes(include='category').
                                            drop(columns='num').columns.tolist(),
-                                           training_data.select_dtypes(include='category').drop(
-                                               columns='num').columns.tolist())
-        feature_selector.run(test_data, test_target)
-
-        # # Create predictor and make some predictions
-        # predictor = NNPredictor(network, test_data)
-        # predictor.predict()
-        # predictor.evaluate(test_target)
-        # print(predictor.get_score())
+                                           training_data.select_dtypes(include='category').
+                                           drop(columns='num').columns.tolist())
+        feature_selector.run(test_data, prediction, n=100)
 
         # columns = preprocessed_data.get_columns()
         # for column in columns:
@@ -96,11 +97,11 @@ if __name__ == '__main__':
         #     network = NeuralNetwork.from_scratch(training_data.shape[1], training_data.shape[1])
         #     network.compile(loss='binary_crossentropy', optimizer='adam')
         #
-        #     trainer = NNTrainer(network, training_data, training_target, epochs=100)
+        #     trainer = Trainer(network, training_data, training_target, epochs=100)
         #     trainer.train(verbose=0)
         #     trainer.evaluate()
         #
-        #     predictor = NNPredictor(network, test_data)
+        #     predictor = Predictor(network, test_data)
         #     predictor.predict()
         #     predictor.evaluate(test_target)
         #     print(predictor.get_score())

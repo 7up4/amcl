@@ -56,6 +56,7 @@ class DataSet:
         self.__data = self.__data.sample(frac=1).reset_index(drop=True)
 
     def drop_columns(self, columns):
+        self.__features.drop_features(columns)
         self.__data.drop(columns, inplace=True, axis=1)
 
     def get_data(self, start=None, stop=None, without_resulting_feature=False):
@@ -65,6 +66,11 @@ class DataSet:
 
     def get_features(self):
         return self.__features
+
+    def rm_less_sensitive(self):
+        rm_feature = self.__features.get_less_sensitive_feature()
+        self.drop_columns(rm_feature)
+        print("Just removed",rm_feature)
 
     def remove_invaluable_features(self):
         for feature in self.__features.get_columns():
