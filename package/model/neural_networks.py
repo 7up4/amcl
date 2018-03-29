@@ -1,4 +1,6 @@
 import tensorflow as tf
+import matplotlib.pyplot as plt
+from sklearn.metrics import roc_curve, auc
 from keras.layers import Concatenate, Input, Embedding, Lambda
 from keras.layers.core import Dense, Dropout, Reshape
 from keras.models import load_model, model_from_json, model_from_yaml, Model
@@ -133,7 +135,7 @@ class NeuralNetwork:
         for name, weigth in weigths.items():
             self.__model.get_layer(name).set_weights(weigth)
 
-    def save_plot(self, to_file='model_plot.png', shapes=True, layer_names=True):
+    def save_plot(self, to_file='model_plot.svg', shapes=False, layer_names=False):
         plot_model(self.__model, to_file=to_file, show_shapes=shapes, show_layer_names=layer_names)
 
     def compile(self, loss='binary_crossentropy', optimizer='adam'):
@@ -236,11 +238,42 @@ class Predictor:
 
     def evaluate(self, real_values):
         if len(self._prediction) > 0:
-            compared = np.equal(np.round(self._prediction), real_values)
-            self._score['correct'] = np.count_nonzero(compared)
-            self._score['total'] = len(self._prediction)
-            self._score['wrong'] = self._score['total'] - self._score['correct']
-            self._score['score'] = self._score['correct'] / self._score['total']
+            rounded_pred = np.round(self._prediction)
+            tp = np.sum(np.logical_and(rounded_pred == 1, real_values == 1))
+            tn = np.sum(np.logical_and(rounded_pred == 0, real_values == 0))
+            fp = np.sum(np.logical_and(rounded_pred == 1, real_values == 0))
+            fn = np.sum(np.logical_and(rounded_pred == 0, real_values == 1))
+            accuracy = (tp + tn) / (tp + fp + fn + tn)
+            self._score['ppv'] = tp / (tp + fp)
+            self._score['npv'] = tn / (tn + fn)
+            self._score['recall'] = tp / (tp + fn)
+            self._score['specificity'] = tn / (tn + fp)
+            self._score['accuracy'] = accuracy
+            self._score['tp'] = tp
+            self._score['tn'] = tn
+            self._score['fp'] = fp
+            self._score['fn'] = fn
+            self._roc(real_values, np.unique(real_values).size)
+
+    def _roc(self, real_values, n_classes):
+        fpr = dict()
+        tpr = dict()
+        roc_auc = dict()
+        for i in range(n_classes):
+            fpr[i], tpr[i], _ = roc_curve(real_values, self._prediction)
+            roc_auc[i] = auc(fpr[i], tpr[i])
+        plt.figure()
+        lw = 1
+        plt.plot(fpr[1], tpr[1], color='darkorange',
+                 lw=lw, label='РХП-кривая (площадь = %0.2f)' % roc_auc[1])
+        plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.0])
+        plt.xlabel('Ложноположительные обнаружения')
+        plt.ylabel('Истинно положительные обнаружения')
+        plt.title('Рабочая характеристика приемника')
+        plt.legend(loc="lower right")
+        plt.show()
 
     def get_score(self):
         return self._score

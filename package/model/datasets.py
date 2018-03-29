@@ -46,6 +46,9 @@ class DataSet:
                 self.__features.set(feature, "statistic", result.statistic)
                 self.__features.set(feature, "pvalue", result.pvalue)
 
+    def index(self):
+        return self.__data.index
+
     def update_features(self):
         self.__features.update(self.__data.columns.tolist())
 
@@ -70,7 +73,7 @@ class DataSet:
     def rm_less_sensitive(self):
         rm_feature = self.__features.get_less_sensitive_feature()
         self.drop_columns(rm_feature)
-        print("Just removed",rm_feature)
+        print("Just removed", rm_feature)
 
     def remove_invaluable_features(self):
         for feature in self.__features.get_columns():

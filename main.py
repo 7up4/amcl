@@ -42,7 +42,7 @@ if __name__ == '__main__':
         dataset.remove_invaluable_features()
 
         # Preprocess input data
-        preprocessed_data = DataSet.copy(dataset, stop=241)
+        preprocessed_data = DataSet.copy(dataset, stop=210)
         preprocessed_data.normalize()
         preprocessed_data.label_categorical_data()
 
@@ -54,8 +54,8 @@ if __name__ == '__main__':
 
         # Create neural network model
         config = NeuralNetworkConfig()
-        network = NeuralNetwork.from_scratch(config, cat_data, cont_data.shape[-1], hidden_units=95, dropout_rate=0.2)
-        network.save_plot('model_plot.png')
+        network = NeuralNetwork.from_scratch(config, cat_data, cont_data.shape[-1], embedding_size=3, hidden_units=30, dropout_rate=0.2)
+        network.save_plot()
         network.compile(loss='binary_crossentropy', optimizer='adam')
 
         cat_data = DataSet.dataframe_to_series(cat_data)
@@ -65,25 +65,25 @@ if __name__ == '__main__':
         trainer.train(verbose=1)
         trainer.evaluate()
 
-        test_data = DataSet.copy(dataset, start=242, without_resulting_feature=True)
+        test_data = DataSet.copy(dataset, start=211, without_resulting_feature=True)
         test_data.update_features()
         test_data.normalize()
         test_data.label_categorical_data()
 
-        test_target = dataset.get_data(start=242).dropna(axis=0, how='any')['num']
+        test_target = dataset.get_data(start=211).dropna(axis=0, how='any')['num']
         test_target = test_target.values
 
         # Create predictor and make some predictions
         predictor = Predictor(network, test_data)
         prediction = predictor.predict()
         predictor.evaluate(test_target)
-        print(predictor.get_score())
+        print("Prediction accuracy for %d rows: %0.2f %%" % (len(test_data.index()), (predictor.get_score()['accuracy'] * 100)))
 
-        feature_selector = FeatureSelector(config, network, training_data.select_dtypes(include='category').
-                                           drop(columns='num').columns.tolist(),
-                                           training_data.select_dtypes(include='category').
-                                           drop(columns='num').columns.tolist())
-        feature_selector.run(test_data, prediction, n=100)
+        # feature_selector = FeatureSelector(config, network, training_data.select_dtypes(include='category').
+        #                                    drop(columns='num').columns.tolist(),
+        #                                    training_data.select_dtypes(include='category').
+        #                                    drop(columns='num').columns.tolist())
+        # feature_selector.run(test_data, prediction, n=100)
 
         # columns = preprocessed_data.get_columns()
         # for column in columns:
