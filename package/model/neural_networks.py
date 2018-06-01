@@ -14,7 +14,7 @@ class NeuralNetworkConfig:
     def __init__(self, categorical_input: str="cat_input", continuous_input: str="cont_input", output: str="output",
                  reshaped_output: str="reshaped_output", noisy_layer: str="noisy", kernel_initializer: str="uniform",
                  hidden: str = "hidden", reshaped: str="reshaped", dropout: str="dropout", merge: str="merge",
-                 activation: str="sigmoid", output_activation: str="sigmoid"):
+                 activation: str="relu", output_activation: str="sigmoid"):
         self.kernel_initializer = kernel_initializer
         self.activation = activation
         self.output_activation = output_activation
@@ -265,13 +265,13 @@ class Predictor:
         plt.figure()
         lw = 1
         plt.plot(fpr[1], tpr[1], color='darkorange',
-                 lw=lw, label='РХП-кривая (площадь = %0.2f)' % roc_auc[1])
+                 lw=lw, label='AUC = %0.2f' % roc_auc[1])
         plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
         plt.xlim([0.0, 1.0])
         plt.ylim([0.0, 1.0])
-        plt.xlabel('Ложноположительные обнаружения')
-        plt.ylabel('Истинно положительные обнаружения')
-        plt.title('Рабочая характеристика приемника')
+        plt.xlabel('Ложно-положительные решения')
+        plt.ylabel('Истино-положительные решения')
+        plt.title('Кривая ошибок')
         plt.legend(loc="lower right")
         plt.show()
 

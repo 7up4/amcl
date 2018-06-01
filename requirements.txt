@@ -10,3 +10,4 @@ pyqt5
 pydot
 graphviz
 h5py
+matplotlib

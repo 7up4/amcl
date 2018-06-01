@@ -1,4 +1,4 @@
-cont,cat,cat,cont,cont,cat,cat,cont,cat,cont,cat,cat,cat,cat
+cont,cat,cat,cont,cont,cat,cat,cont,cat,cont,cat,cont,cat,cat
 age,sex,cp,trestbps,chol,fbs,restecg,thalach,exang,oldpeak,slope,ca,thal,num
 53.0,0.0,3.0,128.0,216.0,0.0,2.0,115.0,0.0,0.0,1.0,0.0,?,0
 53.0,1.0,4.0,142.0,226.0,0.0,2.0,111.0,1.0,0.0,1.0,0.0,7.0,0

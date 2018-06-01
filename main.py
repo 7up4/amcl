@@ -64,7 +64,8 @@ if __name__ == '__main__':
         trainer = Trainer(network, [*cat_data, cont_data], training_target, epochs=100)
         trainer.train(verbose=1)
         trainer.evaluate()
-
+        network.to_h5()
+        network.get_model().summary()
         test_data = DataSet.copy(dataset, start=211, without_resulting_feature=True)
         test_data.update_features()
         test_data.normalize()
