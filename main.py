@@ -1,6 +1,6 @@
 import argparse
 import sys
-
+import pandas as pd
 from PyQt5.QtCore import QCoreApplication
 
 from package.model.datasets import DataSet
@@ -13,7 +13,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('input')
     args = parser.parse_args()
-
+    pd.set_option('display.max_columns', None)
     def alchemy():
         alchemy = SqlAlchemyDBHandler("postgresql", "postgres", "nurlan", "your_password", 5432, "dataset")
         alchemy.configure()
@@ -39,74 +39,76 @@ if __name__ == '__main__':
         dataset.combine_classes(feature_name='num', from_classes=[2, 3, 4], to_class=1)
         dataset.bucketize('age', 10, list(range(0, 10)))
         dataset.calculate_statistics([1, 2, 3], [0])
+        # print(dataset.get_features().get_table())
+        # print(dataset.get_invaluable_features())
         dataset.remove_invaluable_features()
 
         # Preprocess input data
         preprocessed_data = DataSet.copy(dataset, stop=210)
         preprocessed_data.normalize()
         preprocessed_data.label_categorical_data()
+        # preprocessed_data.drop_columns(columns=['chol','cp'])
 
-        # Prepare data for training
-        training_data = preprocessed_data.get_data()
-        cont_data = training_data.select_dtypes(exclude='category').values
-        cat_data = training_data.select_dtypes(include='category').drop(columns='num')
-        training_target = preprocessed_data.get_data()['num'].values
+        debug = 0
+        if debug:
+            # Create neural network model
+            config = NeuralNetworkConfig()
+            network = NeuralNetwork.from_file('my_model.h5')
+            network.get_model().summary()
 
-        # Create neural network model
-        config = NeuralNetworkConfig()
-        network = NeuralNetwork.from_scratch(config, cat_data, cont_data.shape[-1], embedding_size=3, hidden_units=30, dropout_rate=0.2)
-        network.save_plot()
-        network.compile(loss='binary_crossentropy', optimizer='adam')
+            # preprocessed_data.drop_columns(columns='num')
+            test_data = DataSet.copy(dataset, start=211, without_resulting_feature=True)
+            # test_data.drop_columns(columns=['chol','cp'])
+            test_data.normalize()
+            test_data.label_categorical_data()
 
-        cat_data = DataSet.dataframe_to_series(cat_data)
+            test_target = dataset.get_data(start=211).dropna(axis=0, how='any')['num']
+            test_target = test_target.values
 
-        # Create trainer and train a little
-        trainer = Trainer(network, [*cat_data, cont_data], training_target, epochs=100)
-        trainer.train(verbose=1)
-        trainer.evaluate()
-        network.to_h5()
-        network.get_model().summary()
-        test_data = DataSet.copy(dataset, start=211, without_resulting_feature=True)
-        test_data.update_features()
-        test_data.normalize()
-        test_data.label_categorical_data()
+            # Create predictor and make some predictions
+            predictor = Predictor(network, test_data)
+            prediction = predictor.predict()
+            predictor.evaluate(test_target)
+            print("Prediction accuracy: %0.2f %%" % (predictor.get_score()['accuracy'] * 100))
 
-        test_target = dataset.get_data(start=211).dropna(axis=0, how='any')['num']
-        test_target = test_target.values
+            feature_selector = FeatureSelector(config, network, test_data.get_data().columns.tolist(),
+                                               test_data.get_data().select_dtypes(include='category').columns.tolist())
+            feature_selector.run(test_data, prediction, n=10, noise_rate=0.001)
+        else:
+            # Prepare data for training
+            training_data = preprocessed_data.get_data()
+            cont_data = training_data.select_dtypes(exclude='category').values
+            cat_data = training_data.select_dtypes(include='category').drop(columns='num')
+            training_target = preprocessed_data.get_data()['num'].values
 
-        # Create predictor and make some predictions
-        predictor = Predictor(network, test_data)
-        prediction = predictor.predict()
-        predictor.evaluate(test_target)
-        print("Prediction accuracy for %d rows: %0.2f %%" % (len(test_data.index()), (predictor.get_score()['accuracy'] * 100)))
+            # Create neural network model
+            config = NeuralNetworkConfig()
+            network = NeuralNetwork.from_scratch(config, cat_data, cont_data.shape[-1], embedding_size=3,
+                                                 hidden_units=13, dropout_rate=0.2)
+            network.save_plot()
+            network.compile(loss='binary_crossentropy', optimizer='adam')
 
-        # feature_selector = FeatureSelector(config, network, training_data.select_dtypes(include='category').
-        #                                    drop(columns='num').columns.tolist(),
-        #                                    training_data.select_dtypes(include='category').
-        #                                    drop(columns='num').columns.tolist())
-        # feature_selector.run(test_data, prediction, n=100)
+            cat_data = DataSet.dataframe_to_series(cat_data)
 
-        # columns = preprocessed_data.get_columns()
-        # for column in columns:
-        #     if column == 'num':
-        #         continue
-        #     print(column)
-        #     training_data = preprocessed_data.add_noise(column, 0.01)
-        #     training_data = training_data.loc[:, training_data.columns != 'num'].values
-        #     training_target = preprocessed_data.get_dataset()['num'].values
-        #
-        #     network = NeuralNetwork.from_scratch(training_data.shape[1], training_data.shape[1])
-        #     network.compile(loss='binary_crossentropy', optimizer='adam')
-        #
-        #     trainer = Trainer(network, training_data, training_target, epochs=100)
-        #     trainer.train(verbose=0)
-        #     trainer.evaluate()
-        #
-        #     predictor = Predictor(network, test_data)
-        #     predictor.predict()
-        #     predictor.evaluate(test_target)
-        #     print(predictor.get_score())
-        #
-        #     noisy_prediction = predictor.get_prediction()
-        #     # print(noisy_prediction)
-        #     print(abs(np.sum(noisy_prediction)-np.sum(predictionX))/predictionX.size)
+            # Create trainer and train a little
+            trainer = Trainer(network, [*cat_data, cont_data], training_target, epochs=100)
+            trainer.train(verbose=1)
+            trainer.evaluate()
+            network.to_h5()
+            network.get_model().summary()
+
+            test_data = DataSet.copy(dataset, start=211, without_resulting_feature=True)
+            # test_data.drop_columns(columns=['chol','cp'])
+            print(test_data.get_features().get_table())
+            test_data.normalize()
+            test_data.label_categorical_data()
+
+            test_target = dataset.get_data(start=211).dropna(axis=0, how='any')['num']
+            test_target = test_target.values
+
+            # Create predictor and make some predictions
+            predictor = Predictor(network, test_data)
+            prediction = predictor.predict()
+            predictor.evaluate(test_target)
+            print("Prediction accuracy for %d rows: %0.2f %%" % (
+            len(test_data.index()), (predictor.get_score()['accuracy'] * 100)))

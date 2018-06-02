@@ -15,7 +15,7 @@ class DataSet:
     @classmethod
     def copy(cls, dataset, start=None, stop=None, without_resulting_feature=False):
         data = dataset.get_data(start, stop, without_resulting_feature)
-        features = copy.copy(dataset.get_features())
+        features = copy.deepcopy(dataset.get_features())
         return cls(copy.copy(data), features)
 
     @classmethod
@@ -81,6 +81,13 @@ class DataSet:
                 self.__data.drop(columns=feature, inplace=True)
         self.update_features()
 
+    def get_invaluable_features(self):
+        invaluable_features = []
+        for feature in self.__features.get_columns():
+            if not self.__features.is_valuable(feature):
+                invaluable_features.append(feature)
+        return invaluable_features
+
     @property
     def resulting_feature(self):
         for feature in self.__features.get_columns():
@@ -120,6 +127,9 @@ class DataSet:
         continuous_features = self.__data.select_dtypes(exclude='category')
         normalized_cont_f = (continuous_features-continuous_features.mean())/continuous_features.std()
         self.__data.update(normalized_cont_f)
+
+    def add_noise_to_column(self, column, noise_rate=0.001):
+        self.__data[column] *= (1+noise_rate)
 
     @staticmethod
     def dataframe_to_series(dataframe):

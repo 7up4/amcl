@@ -170,7 +170,7 @@ class FeatureSelector:
         for x in cat_columns:
             self._cat_data[x] = self._source_model.get_layer(x).get_config()["input_dim"] - 1
 
-    def _build_network(self, config, noisy_column, noise_rate=0.01):
+    def _build_network(self, config, noisy_column, noise_rate):
         noisy_model = NeuralNetwork.from_scratch(config=config, categorical_data=self._cat_data,
                                                  continuous_features=self._cont_input_shape,
                                                  hidden_units=self._hid_size, embedding_size=self._emb_size,
@@ -180,10 +180,16 @@ class FeatureSelector:
         noisy_model.set_weights_by_name(self._weights)
         return noisy_model
 
-    def run(self, dataset, prediction, n=10):
+    def run(self, dataset, prediction, n=10, noise_rate=0.001):
         for column in self._noisy_columns:
-            noisy_model = self._build_network(self._config, noisy_column=column)
-            predictor = Predictor(noisy_model, dataset)
+            if dataset.get_data()[column].dtype.name=='category':
+                noisy_model = self._build_network(self._config, noisy_column=column, noise_rate=noise_rate)
+                predictor = Predictor(noisy_model, dataset)
+            else:
+                noisy_dataset = DataSet.copy(dataset)
+                noisy_dataset.add_noise_to_column(column, noise_rate)
+                noisy_model = self._source_model
+                predictor = Predictor(noisy_model, noisy_dataset)
             sensitivity = 0
             for i in range(n):
                 print(i+1, ": adding noise to column ", column)
@@ -219,7 +225,7 @@ class Trainer:
 
 
 class Predictor:
-    def __init__(self, nnet: NeuralNetwork, dataset: pd.DataFrame):
+    def __init__(self, nnet: NeuralNetwork, dataset: DataSet):
         self._nnet = nnet
         self._dataset = dataset
         self._score = {}
