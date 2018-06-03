@@ -1,11 +1,13 @@
 import argparse
 import sys
 import pandas as pd
+import numpy as np
 from PyQt5.QtCore import QCoreApplication
 
 from package.model.datasets import DataSet
 from package.model.input_handlers import SqlAlchemyDBHandler, QtSqlDBHandler, DataFileHandler
-from package.model.neural_networks import NeuralNetwork, Trainer, FeatureSelector, NeuralNetworkConfig, Predictor
+from package.model.neural_networks import NeuralNetwork, Trainer, FeatureSelector, NeuralNetworkConfig, Predictor, CorrelationAnalyzer
+
 
 if __name__ == '__main__':
     app = QCoreApplication(sys.argv)
@@ -49,11 +51,16 @@ if __name__ == '__main__':
         preprocessed_data.label_categorical_data()
         # preprocessed_data.drop_columns(columns=['chol','cp'])
 
-        debug = 0
+        # network1 = NeuralNetwork.from_file('my_model1.h5')
+        # emb1 = network1.get_weights_for_feature('sex')
+        # s = EmbeddingConverter(emb1, 2, 3)
+        # embedded_sex = s.convert(preprocessed_data.get_data()['sex'])
+
+        debug = 1
         if debug:
             # Create neural network model
             config = NeuralNetworkConfig()
-            network = NeuralNetwork.from_file('my_model.h5')
+            network = NeuralNetwork.from_file('my_model1.h5')
             network.get_model().summary()
 
             # preprocessed_data.drop_columns(columns='num')
@@ -71,9 +78,15 @@ if __name__ == '__main__':
             predictor.evaluate(test_target)
             print("Prediction accuracy: %0.2f %%" % (predictor.get_score()['accuracy'] * 100))
 
-            feature_selector = FeatureSelector(config, network, test_data.get_data().columns.tolist(),
+            # feature_selector = FeatureSelector(config, network, test_data.get_data().columns.tolist(),
+            #                                    test_data.get_data().select_dtypes(include='category').columns.tolist())
+            # feature_selector.run(test_data, prediction, noise_rate=0.001)
+
+            correlation_analyzer = CorrelationAnalyzer(config, network, test_data.get_data().columns.tolist(),
                                                test_data.get_data().select_dtypes(include='category').columns.tolist())
-            feature_selector.run(test_data, prediction, n=10, noise_rate=0.001)
+            table = correlation_analyzer.run(test_data, test_target, noise_rate=0.001)
+            print(table)
+            print(correlation_analyzer.select_candidates())
         else:
             # Prepare data for training
             training_data = preprocessed_data.get_data()
