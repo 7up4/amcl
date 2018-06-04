@@ -33,17 +33,6 @@ class NeuralNetworkConfig:
         self.reshaped_output = reshaped_output
 
 
-class EmbeddingConverter:
-    def __init__(self, weights, categories: int, emb_size: int):
-        inp = Input((1,))
-        emb = Embedding(categories + 1, emb_size, weights=weights, trainable=False)(inp)
-        self.__model = Model(inputs=inp, outputs=emb)
-        self.__model.compile('rmsprop', 'mse')
-
-    def convert(self, input):
-        return self.__model.predict(input)
-
-
 class NeuralNetwork:
     def __init__(self, model):
         self.__model = model
@@ -217,15 +206,21 @@ class FeatureSelector:
             sensitivity += delta
             dataset.get_features().set_sensitivity(column, sensitivity)
             print(dataset.get_features().get_table())
-        # dataset.rm_less_sensitive()
+        dataset.rm_less_sensitive()
+        cont_data = dataset.get_data().select_dtypes(exclude='category').values
+        cat_data = dataset.get_data().select_dtypes(include='category')
+        network = NeuralNetwork.from_scratch(self._config, cat_data, cont_data.shape[-1], embedding_size=self._emb_size,
+                                             hidden_units=self._hid_size, dropout_rate=self._dropout_rate)
+        network.compile()
+        return network
 
 
 class CorrelationAnalyzer:
     def __init__(self, config: NeuralNetworkConfig, nnet: NeuralNetwork, noisy_columns, cat_columns: list):
         self._source_model = nnet
         self._config = config
-        self._weights = self._source_model.get_weights_with_name()
-        self._emb_weights = { feature: self._weights[feature] for feature in cat_columns }
+        self._weights = None
+        self._emb_weights = None
         self._cat_input_shape = self._source_model.get_layer(config.cat_input+cat_columns[0]).get_input_shape_at(0)
         self._cont_input_shape = self._source_model.get_layer(config.cont_input).get_input_shape_at(0)[-1]
         self._hid_size = self._source_model.get_layer(config.hidden+"1").get_output_shape_at(0)[-1]
@@ -250,7 +245,17 @@ class CorrelationAnalyzer:
             noisy_model.set_weights_by_name(self._weights)
         return noisy_model
 
-    def run(self, dataset, target, noise_rate=0.001):
+    def run(self, dataset, target, noise_rate=0.001, training_epochs=100):
+        training_data = dataset.get_data()
+        cont_data = training_data.select_dtypes(exclude='category').values
+        cat_data = training_data.select_dtypes(include='category')
+        cat_data = DataSet.dataframe_to_series(cat_data)
+        training_target = target
+        trainer = Trainer(self._source_model, [*cat_data, cont_data], training_target, epochs=training_epochs)
+        trainer.train()
+        trainer.evaluate()
+        self._weights = self._source_model.get_weights_with_name()
+        self._emb_weights = { feature: self._weights[feature] for feature in list(self._cat_data.keys()) }
         predictor = Predictor(self._source_model, dataset)
         self._table[0][0] = np.sum(predictor.predict())
         noise_rate = random.uniform(0, noise_rate)
@@ -263,8 +268,8 @@ class CorrelationAnalyzer:
                 cat_data = DataSet.dataframe_to_series(cat_data)
                 training_target = target
                 noisy_model = self._build_network(self._config, noisy_column=column, noise_rate=noise_rate)
-                noisy_model.compile(loss='binary_crossentropy', optimizer='adam')
-                trainer = Trainer(noisy_model, [*cat_data, cont_data], training_target, epochs=100)
+                noisy_model.compile()
+                trainer = Trainer(noisy_model, [*cat_data, cont_data], training_target, epochs=training_epochs)
                 trainer.train()
                 trainer.evaluate()
                 predictor = Predictor(noisy_model, dataset)
@@ -277,8 +282,8 @@ class CorrelationAnalyzer:
                 cat_data = DataSet.dataframe_to_series(cat_data)
                 training_target = target
                 noisy_model = self._build_network(self._config)
-                noisy_model.compile(loss='binary_crossentropy', optimizer='adam')
-                trainer = Trainer(noisy_model, [*cat_data, cont_data], training_target, epochs=100)
+                noisy_model.compile()
+                trainer = Trainer(noisy_model, [*cat_data, cont_data], training_target, epochs=training_epochs)
                 trainer.train()
                 trainer.evaluate()
                 predictor = Predictor(noisy_model, noisy_dataset)
@@ -316,7 +321,6 @@ class CorrelationAnalyzer:
         for column in candidates:
             fcandidates[column] = []
             for row in range(candidates.shape[0]):
-                print(column, "is in?", candidates[candidates[column][row]].tolist())
                 if column in candidates[candidates[column][row]].tolist():
                     fcandidates[column].append(candidates[column][row])
         fcandidates = list(filter(None, fcandidates.values()))

@@ -78,13 +78,13 @@ if __name__ == '__main__':
             predictor.evaluate(test_target)
             print("Prediction accuracy: %0.2f %%" % (predictor.get_score()['accuracy'] * 100))
 
-            # feature_selector = FeatureSelector(config, network, test_data.get_data().columns.tolist(),
-            #                                    test_data.get_data().select_dtypes(include='category').columns.tolist())
-            # feature_selector.run(test_data, prediction, noise_rate=0.001)
+            feature_selector = FeatureSelector(config, network, test_data.get_data().columns.tolist(),
+                                               test_data.get_data().select_dtypes(include='category').columns.tolist())
+            network = feature_selector.run(test_data, prediction, noise_rate=0.001)
 
             correlation_analyzer = CorrelationAnalyzer(config, network, test_data.get_data().columns.tolist(),
                                                test_data.get_data().select_dtypes(include='category').columns.tolist())
-            table = correlation_analyzer.run(test_data, test_target, noise_rate=0.001)
+            table = correlation_analyzer.run(test_data, test_target, noise_rate=0.001, training_epochs=100)
             print(table)
             print(correlation_analyzer.select_candidates())
         else:

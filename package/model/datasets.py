@@ -73,7 +73,6 @@ class DataSet:
     def rm_less_sensitive(self):
         rm_feature = self.__features.get_less_sensitive_feature()
         self.drop_columns(rm_feature)
-        print("Just removed", rm_feature)
 
     def remove_invaluable_features(self):
         for feature in self.__features.get_columns():
