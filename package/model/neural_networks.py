@@ -41,9 +41,11 @@ class NeuralNetwork:
         return self.__model
 
     @classmethod
-    def from_scratch(cls, config: NeuralNetworkConfig, categorical_data, continuous_features: int, hidden_units: int,
+    def from_scratch(cls, config: NeuralNetworkConfig, dataset, hidden_units: int,
                      noise_rate: float=None, noisy_column=None, embedding_size: int=10, dropout_rate: float=0.2,
                      output_units=1, embedding_layers_trainable=True):
+        categorical_data = dataset.get_data(without_resulting_feature=True).select_dtypes(include='category')
+        continuous_features = dataset.get_data(without_resulting_feature=True).select_dtypes(exclude='category').columns.size
 
         if isinstance(categorical_data, pd.DataFrame):
             categorical_data_categories = {}
@@ -81,7 +83,7 @@ class NeuralNetwork:
         # create input layer for continuous data
         continuous_input = Input(shape=(continuous_features,), name=config.cont_input)
         if noisy_column and isinstance(noisy_column, int):
-            noise_layer = Lambda(NeuralNetwork._add_noise_to_column, arguments={'column': noisy_column,
+            noise_layer = Lambda(NeuralNetwork._add_noise_to_column, trainable=False, arguments={'column': noisy_column,
                                                                                 'rate': noise_rate},
                                  name=str(noisy_column)+config.noisy_layer)
 
@@ -164,23 +166,23 @@ class NeuralNetwork:
 
 
 class FeatureSelector:
-    def __init__(self, config: NeuralNetworkConfig, nnet: NeuralNetwork, noisy_columns, cat_columns: list):
+    def __init__(self, config: NeuralNetworkConfig, nnet: NeuralNetwork, training_dataset):
         self._source_model = nnet
         self._config = config
+        self._training_dataset = training_dataset
+        categorical_columns = training_dataset.get_data(without_resulting_feature=True).select_dtypes(include='category').columns
         self._weights = self._source_model.get_weights_with_name()
-        self._cat_input_shape = self._source_model.get_layer(config.cat_input+cat_columns[0]).get_input_shape_at(0)
+        self._cat_input_shape = self._source_model.get_layer(config.cat_input+categorical_columns[0]).get_input_shape_at(0)
         self._cont_input_shape = self._source_model.get_layer(config.cont_input).get_input_shape_at(0)[-1]
         self._hid_size = self._source_model.get_layer(config.hidden+"1").get_output_shape_at(0)[-1]
-        self._emb_size = self._source_model.get_layer(cat_columns[0]).get_output_shape_at(0)[-1]
+        self._emb_size = self._source_model.get_layer(categorical_columns[0]).get_output_shape_at(0)[-1]
         self._dropout_rate = self._source_model.get_layer(config.dropout+"1").get_config()['rate']
-        self._noisy_columns = noisy_columns
         self._cat_data = {}
-        for x in cat_columns:
+        for x in categorical_columns:
             self._cat_data[x] = self._source_model.get_layer(x).get_config()["input_dim"] - 1
 
-    def _build_network(self, config, noisy_column, noise_rate):
-        noisy_model = NeuralNetwork.from_scratch(config=config, categorical_data=self._cat_data,
-                                                 continuous_features=self._cont_input_shape,
+    def _build_network(self, config, dataset, noisy_column, noise_rate):
+        noisy_model = NeuralNetwork.from_scratch(config=config, dataset=dataset,
                                                  hidden_units=self._hid_size, embedding_size=self._emb_size,
                                                  dropout_rate=self._dropout_rate, noise_rate=noise_rate,
                                                  noisy_column=noisy_column)
@@ -188,53 +190,71 @@ class FeatureSelector:
         noisy_model.set_weights_by_name(self._weights)
         return noisy_model
 
-    def run(self, dataset, prediction, noise_rate=0.001):
+    def run(self, training_dataset, training_target, test_dataset, test_target, noise_rate=0.001, training_epochs=100):
+        training_dataset = DataSet.copy(training_dataset)
+        test_dataset = DataSet.copy(test_dataset)
+        predictor = Predictor(self._source_model, test_dataset)
+        prediction = predictor.predict()
+        predictor.evaluate(test_target)
+        prev_accuracy = predictor.get_score()['accuracy']
+        curr_accuracy = prev_accuracy
+        features_to_remove = []
         noise_rate = random.uniform(0, noise_rate)
-        for column in self._noisy_columns:
-            if dataset.get_data()[column].dtype.name=='category':
-                noisy_model = self._build_network(self._config, noisy_column=column, noise_rate=noise_rate)
-                predictor = Predictor(noisy_model, dataset)
-            else:
-                noisy_dataset = DataSet.copy(dataset)
-                noisy_dataset.add_noise_to_column(column, noise_rate)
-                noisy_model = self._source_model
-                predictor = Predictor(noisy_model, noisy_dataset)
-            sensitivity = 0
-            print("Adding noise to feature ", column)
-            noisy_prediction = predictor.predict()
-            delta = abs(np.sum(noisy_prediction) - np.sum(prediction))
-            sensitivity += delta
-            dataset.get_features().set_sensitivity(column, sensitivity)
-            print(dataset.get_features().get_table())
-        dataset.rm_less_sensitive()
-        cont_data = dataset.get_data().select_dtypes(exclude='category').values
-        cat_data = dataset.get_data().select_dtypes(include='category')
-        network = NeuralNetwork.from_scratch(self._config, cat_data, cont_data.shape[-1], embedding_size=self._emb_size,
-                                             hidden_units=self._hid_size, dropout_rate=self._dropout_rate)
-        network.compile()
-        return network
+        while curr_accuracy >= prev_accuracy:
+            for column in training_dataset.get_data().columns:
+                if test_dataset.get_data()[column].dtype.name == 'category':
+                    noisy_model = self._build_network(self._config, dataset=training_dataset, noisy_column=column, noise_rate=noise_rate)
+                    predictor = Predictor(noisy_model, test_dataset)
+                else:
+                    noisy_dataset = DataSet.copy(test_dataset)
+                    noisy_dataset.add_noise_to_column(column, noise_rate)
+                    noisy_model = self._source_model
+                    predictor = Predictor(noisy_model, noisy_dataset)
+                noisy_prediction = predictor.predict()
+                sensitivity = abs(np.sum(noisy_prediction) - np.sum(prediction))
+                test_dataset.get_features().set_sensitivity(column, sensitivity)
+                training_dataset.get_features().set_sensitivity(column, sensitivity)
+                print("Sensitivity of %s: %f" % (column, training_dataset.get_features().get_sensitivity(column)))
+            less_sensitive_feature = test_dataset.get_features().get_less_sensitive_feature()
+            features_to_remove.append(less_sensitive_feature)
+            test_dataset.rm_less_sensitive()
+            training_dataset.rm_less_sensitive()
+            self._source_model = NeuralNetwork.from_scratch(self._config, training_dataset, embedding_size=self._emb_size,
+                                                 hidden_units=self._hid_size, dropout_rate=self._dropout_rate)
+            self._source_model.compile()
+            trainer = Trainer(self._source_model, training_dataset, training_target, epochs=training_epochs)
+            trainer.train()
+            trainer.evaluate()
+            self._weights = self._source_model.get_weights_with_name()
+            predictor = Predictor(self._source_model, test_dataset)
+            prediction = predictor.predict()
+            predictor.evaluate(test_target)
+            prev_accuracy, curr_accuracy = curr_accuracy, predictor.get_score()['accuracy']
+        return features_to_remove[:-1]
 
 
 class CorrelationAnalyzer:
-    def __init__(self, config: NeuralNetworkConfig, nnet: NeuralNetwork, noisy_columns, cat_columns: list):
+    def __init__(self, config: NeuralNetworkConfig, nnet: NeuralNetwork, training_dataset):
         self._source_model = nnet
         self._config = config
+        self._training_dataset = training_dataset
+        self._columns = self._training_dataset.get_data().columns
+        categorical_columns = training_dataset.get_data(without_resulting_feature=True).select_dtypes(
+            include='category').columns
         self._weights = None
         self._emb_weights = None
-        self._cat_input_shape = self._source_model.get_layer(config.cat_input+cat_columns[0]).get_input_shape_at(0)
+        self._cat_input_shape = self._source_model.get_layer(config.cat_input+categorical_columns[0]).get_input_shape_at(0)
         self._cont_input_shape = self._source_model.get_layer(config.cont_input).get_input_shape_at(0)[-1]
         self._hid_size = self._source_model.get_layer(config.hidden+"1").get_output_shape_at(0)[-1]
-        self._emb_size = self._source_model.get_layer(cat_columns[0]).get_output_shape_at(0)[-1]
+        self._emb_size = self._source_model.get_layer(categorical_columns[0]).get_output_shape_at(0)[-1]
         self._dropout_rate = self._source_model.get_layer(config.dropout+"1").get_config()['rate']
-        self._noisy_columns = noisy_columns
-        self._table = np.zeros([len(cat_columns)+self._cont_input_shape+1, len(cat_columns)+self._cont_input_shape+1])
+        self._table = np.empty([len(categorical_columns)+self._cont_input_shape+1, len(categorical_columns)+self._cont_input_shape+1])
         self._cat_data = {}
-        for x in cat_columns:
+        for x in categorical_columns:
             self._cat_data[x] = self._source_model.get_layer(x).get_config()["input_dim"] - 1
 
-    def _build_network(self, config, noisy_column=None, noise_rate=None, full_copy: bool = False):
-        noisy_model = NeuralNetwork.from_scratch(config=config, categorical_data=self._cat_data,
-                                                 continuous_features=self._cont_input_shape,
+    def _build_network(self, config, dataset, noisy_column=None, noise_rate=None, full_copy: bool = False):
+        noisy_model = NeuralNetwork.from_scratch(config=config, dataset=dataset,
                                                  hidden_units=self._hid_size, embedding_size=self._emb_size,
                                                  dropout_rate=self._dropout_rate, noise_rate=noise_rate,
                                                  noisy_column=noisy_column, embedding_layers_trainable=False)
@@ -245,62 +265,47 @@ class CorrelationAnalyzer:
             noisy_model.set_weights_by_name(self._weights)
         return noisy_model
 
-    def run(self, dataset, target, noise_rate=0.001, training_epochs=100):
-        training_data = dataset.get_data()
-        cont_data = training_data.select_dtypes(exclude='category').values
-        cat_data = training_data.select_dtypes(include='category')
-        cat_data = DataSet.dataframe_to_series(cat_data)
-        training_target = target
-        trainer = Trainer(self._source_model, [*cat_data, cont_data], training_target, epochs=training_epochs)
+    def run(self, test_dataset, training_dataset, training_target, noise_rate=0.001, training_epochs=100):
+        training_dataset = DataSet.copy(training_dataset)
+        trainer = Trainer(self._source_model, training_dataset, training_target, epochs=training_epochs)
         trainer.train()
         trainer.evaluate()
         self._weights = self._source_model.get_weights_with_name()
-        self._emb_weights = { feature: self._weights[feature] for feature in list(self._cat_data.keys()) }
-        predictor = Predictor(self._source_model, dataset)
+        self._emb_weights = {feature: self._weights[feature] for feature in list(self._cat_data.keys())}
+        predictor = Predictor(self._source_model, test_dataset)
         self._table[0][0] = np.sum(predictor.predict())
         noise_rate = random.uniform(0, noise_rate)
-
-        for idx, column in enumerate(self._noisy_columns):
-            if dataset.get_data()[column].dtype.name == 'category':
-                training_data = dataset.get_data()
-                cont_data = training_data.select_dtypes(exclude='category').values
-                cat_data = training_data.select_dtypes(include='category')
-                cat_data = DataSet.dataframe_to_series(cat_data)
-                training_target = target
-                noisy_model = self._build_network(self._config, noisy_column=column, noise_rate=noise_rate)
+        for idx, column in enumerate(self._columns):
+            if training_dataset.get_data()[column].dtype.name == 'category':
+                noisy_model = self._build_network(self._config, training_dataset, noisy_column=column, noise_rate=noise_rate)
                 noisy_model.compile()
-                trainer = Trainer(noisy_model, [*cat_data, cont_data], training_target, epochs=training_epochs)
+                trainer = Trainer(noisy_model, training_dataset, training_target, epochs=training_epochs)
                 trainer.train()
                 trainer.evaluate()
-                predictor = Predictor(noisy_model, dataset)
+                predictor = Predictor(noisy_model, test_dataset)
             else:
-                noisy_dataset = DataSet.copy(dataset)
+                noisy_dataset = DataSet.copy(training_dataset)
                 noisy_dataset.add_noise_to_column(column, noise_rate)
-                training_data = noisy_dataset.get_data()
-                cont_data = training_data.select_dtypes(exclude='category').values
-                cat_data = training_data.select_dtypes(include='category')
-                cat_data = DataSet.dataframe_to_series(cat_data)
-                training_target = target
-                noisy_model = self._build_network(self._config)
+                noisy_model = self._build_network(self._config, training_dataset)
                 noisy_model.compile()
-                trainer = Trainer(noisy_model, [*cat_data, cont_data], training_target, epochs=training_epochs)
+                trainer = Trainer(noisy_model,training_dataset, training_target, epochs=training_epochs)
                 trainer.train()
                 trainer.evaluate()
-                predictor = Predictor(noisy_model, noisy_dataset)
-            print("Adding noise to feature ", column)
+                noisy_test_dataset = DataSet.copy(test_dataset)
+                noisy_test_dataset.add_noise_to_column(column, noise_rate)
+                predictor = Predictor(noisy_model, noisy_test_dataset)
             noisy_prediction = predictor.predict()
             self._table[0][idx+1] = abs(np.sum(noisy_prediction) - self._table[0][0])
 
-        for idx, column in enumerate(self._noisy_columns):
-            if dataset.get_data()[column].dtype.name == 'category':
-                noisy_model = self._build_network(self._config, noisy_column=column, noise_rate=noise_rate, full_copy=True)
-                predictor = Predictor(noisy_model, dataset)
+        for idx, column in enumerate(self._columns):
+            if test_dataset.get_data()[column].dtype.name == 'category':
+                noisy_model = self._build_network(self._config, training_dataset, noisy_column=column, noise_rate=noise_rate, full_copy=True)
+                predictor = Predictor(noisy_model, test_dataset)
             else:
-                noisy_dataset = DataSet.copy(dataset)
+                noisy_dataset = DataSet.copy(test_dataset)
                 noisy_dataset.add_noise_to_column(column, noise_rate)
                 noisy_model = self._source_model
                 predictor = Predictor(noisy_model, noisy_dataset)
-            print("Adding noise to feature ", column)
             noisy_prediction = predictor.predict()
             self._table[idx + 1][0] = abs(np.sum(noisy_prediction) - self._table[0][0])
 
@@ -309,12 +314,12 @@ class CorrelationAnalyzer:
                 self._table[idx+1][c+1] = abs(self._table[idx+1][0] - self._table[0][c+1])
         self._table = np.delete(self._table, 0, 0)
         self._table = np.delete(self._table, 0, 1)
-        self._table = pd.DataFrame(data=self._table, index=self._noisy_columns, columns=self._noisy_columns)
+        self._table = pd.DataFrame(data=self._table, index=self._columns, columns=self._columns)
         self._table.loc['mean'] = self._table.mean()
         return self._table
 
     def select_candidates(self):
-        candidates = pd.DataFrame(columns=self._noisy_columns)
+        candidates = pd.DataFrame(columns=self._columns)
         fcandidates = dict()
         for column in self._table:
             candidates[column]= (self._table.loc[self._table[column] > self._table[column]['mean']]).index.tolist()
@@ -329,21 +334,24 @@ class CorrelationAnalyzer:
 
 
 class Trainer:
-    def __init__(self, nnet: NeuralNetwork, training_data, target_data, batch_size=16, epochs=1000):
+    def __init__(self, nnet: NeuralNetwork, training_dataset, training_target, batch_size=16, epochs=1000):
         self.__nnet = nnet
-        self.__training_data = training_data
-        self.__target_data = target_data
+        continuous_data = training_dataset.get_data().select_dtypes(exclude='category').values
+        categorical_data = DataSet.dataframe_to_series(training_dataset.get_data(without_resulting_feature=True).select_dtypes(include='category'))
+        self.__training_dataset = [*categorical_data, continuous_data]
+        self.__training_target = training_target
         self.__batch_size = batch_size
         self.__epochs = epochs
         self.__score = None
 
+
     def train(self, verbose=1):
         # tensorboard = TensorBoard(log_dir="logs/{}".format(time()))
-        self.__nnet.get_model().fit(self.__training_data, self.__target_data, batch_size=self.__batch_size,
+        self.__nnet.get_model().fit(self.__training_dataset, self.__training_target, batch_size=self.__batch_size,
                                     epochs=self.__epochs, verbose=verbose)
 
     def evaluate(self, verbose=1):
-        self.__score = self.__nnet.get_model().evaluate(self.__training_data, self.__target_data,
+        self.__score = self.__nnet.get_model().evaluate(self.__training_dataset, self.__training_target,
                                                         batch_size=self.__batch_size, verbose=verbose)
 
     def get_score(self):

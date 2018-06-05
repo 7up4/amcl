@@ -63,7 +63,7 @@ class DataSet:
         self.__data.drop(columns, inplace=True, axis=1)
 
     def get_data(self, start=None, stop=None, without_resulting_feature=False):
-        if without_resulting_feature:
+        if without_resulting_feature and self.resulting_feature:
             return self.__data.ix[start:stop].drop(columns=self.resulting_feature)
         return self.__data.ix[start:stop]
 
@@ -73,6 +73,7 @@ class DataSet:
     def rm_less_sensitive(self):
         rm_feature = self.__features.get_less_sensitive_feature()
         self.drop_columns(rm_feature)
+        return rm_feature
 
     def remove_invaluable_features(self):
         for feature in self.__features.get_columns():

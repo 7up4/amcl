@@ -47,6 +47,9 @@ class Metadata:
     def set_sensitivity(self, feature, sensitivity):
         self._table[feature][self._sensitivity] = sensitivity
 
+    def get_sensitivity(self, feature):
+        return self._table[feature][self._sensitivity]
+
     def rename_features(self, feature_names, new_names):
         delta = dict(zip(feature_names, new_names))
         self._table.rename(columns=delta, inplace=True)
