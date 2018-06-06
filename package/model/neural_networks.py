@@ -447,7 +447,7 @@ class CorrelationAnalyzer:
                 noisy_dataset.add_noise_to_column(column, noise_rate)
                 noisy_model = self._build_network(self._config, training_dataset)
                 noisy_model.compile()
-                trainer = Trainer(noisy_model,training_dataset, training_target, epochs=training_epochs)
+                trainer = Trainer(noisy_model,noisy_dataset, training_target, epochs=training_epochs)
                 trainer.train()
                 trainer.evaluate()
                 noisy_test_dataset = DataSet.copy(test_dataset)

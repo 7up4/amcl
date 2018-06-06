@@ -59,8 +59,8 @@ if __name__ == '__main__':
         if debug == 1:
             # Create neural network model
             config = NeuralNetworkConfig()
-            # network = FullyConnectedNeuralNetwork.from_file('my_model1.h5')
-            # network.get_model().summary()
+            network = FullyConnectedNeuralNetwork.from_file('my_model1.h5')
+            network.get_model().summary()
 
             test_data = DataSet.copy(dataset, start=211, without_resulting_feature=True)
             test_data.normalize()
@@ -73,30 +73,29 @@ if __name__ == '__main__':
             training_data.drop_resulting_feature()
 
             # Create predictor and make some predictions
-            # predictor = Predictor(network, test_data)
-            # prediction = predictor.predict()
-            # predictor.evaluate(test_target)
-            # print("Prediction accuracy: %0.2f %%" % (predictor.get_score()['accuracy'] * 100))
+            predictor = Predictor(network, test_data)
+            prediction = predictor.predict()
+            predictor.evaluate(test_target)
+            print("Prediction accuracy: %0.2f %%" % (predictor.get_score()['accuracy'] * 100))
 
-            # feature_selector = FeatureSelector(config, network, training_data)
-            # less_sensitive_features = feature_selector.run(training_data, training_target, test_data, test_target, noise_rate=0.001, training_epochs=100)
-            # print(less_sensitive_features)
-            # training_data.drop_columns(less_sensitive_features)
-            # test_data.drop_columns(less_sensitive_features)
+            feature_selector = FeatureSelector(config, network, training_data)
+            less_sensitive_features = feature_selector.run(training_data, training_target, test_data, test_target, noise_rate=0.001, training_epochs=100)
+            print(less_sensitive_features)
+            training_data.drop_columns(less_sensitive_features)
+            test_data.drop_columns(less_sensitive_features)
 
-            # network = FullyConnectedNeuralNetwork.from_scratch(config, training_data, embedding_size=3,
-            #                                      hidden_units=13, dropout_rate=0.2)
-            # network.compile()
-            # network.to_h5('after_feature_selector.h5')
+            network = FullyConnectedNeuralNetwork.from_scratch(config, training_data, embedding_size=3,
+                                                 hidden_units=13, dropout_rate=0.2)
+            network.compile()
+            network.to_h5('after_feature_selector.h5')
 
-            # network = FullyConnectedNeuralNetwork.from_file('after_feature_selector.h5')
-            #
-            # correlation_analyzer = CorrelationAnalyzer(config, network, training_data)
-            # table = correlation_analyzer.run(test_data, training_data, training_target, noise_rate=0.001, training_epochs=100)
-            # correlation_info = correlation_analyzer.select_candidates()
-            # print(correlation_info)
-            correlation_info = [['sex', 'trestbps', 'chol', 'thalach', 'exang', 'oldpeak', 'slope', 'thal']]
-            # correlation_info = [['age', 'trestbps', 'chol', 'thalach', 'oldpeak']]
+            network = FullyConnectedNeuralNetwork.from_file('after_feature_selector.h5')
+
+            correlation_analyzer = CorrelationAnalyzer(config, network, training_data)
+            table = correlation_analyzer.run(test_data, training_data, training_target, noise_rate=0.001, training_epochs=100)
+            correlation_info = correlation_analyzer.select_candidates()
+            print(correlation_info)
+
             network = OptimizedNeuralNetwork.from_scratch(config, training_data, correlation_info, embedding_size=3, dropout_rate=0.2, output_units=1)
             network.compile()
             # network.save_plot('optimized_model.png')
