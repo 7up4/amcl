@@ -75,6 +75,16 @@ class DataSet:
         self.drop_columns(rm_feature)
         return rm_feature
 
+    def get_resulting_series(self):
+        resulting_feature = self.resulting_feature
+        if resulting_feature:
+            return self.__data[resulting_feature]
+
+    def drop_resulting_feature(self):
+        resulting_feature = self.resulting_feature
+        if resulting_feature:
+            self.drop_columns(resulting_feature)
+
     def remove_invaluable_features(self):
         for feature in self.__features.get_columns():
             if not self.__features.is_valuable(feature):
