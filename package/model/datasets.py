@@ -1,6 +1,8 @@
 from .importing_modules import *
 from .metadata import Metadata
 import copy
+import math
+import random
 from .input_handlers import InputHandler
 from scipy.stats import chisquare
 from scipy.stats import mannwhitneyu
@@ -140,6 +142,13 @@ class DataSet:
 
     def add_noise_to_column(self, column, noise_rate=0.001):
         self.__data[column] *= (1+noise_rate)
+
+    def add_noise_to_categorical_columns(self, column, noise_rate=0.001):
+        orig_column = self.__data[column]
+        categories = orig_column.cat.categories.tolist()
+        random_rows = random.sample(list(orig_column.index), math.ceil(orig_column.size*noise_rate))
+        for row in random_rows:
+            self.__data[column][row] = random.choice(list(set(categories) - {orig_column.loc[row]}))
 
     @staticmethod
     def dataframe_to_series(dataframe):

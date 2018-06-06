@@ -90,7 +90,7 @@ class NeuralNetwork:
 class FullyConnectedNeuralNetwork(NeuralNetwork):
     @classmethod
     def from_scratch(cls, config: NeuralNetworkConfig, dataset, hidden_units: int,
-                     noise_rate: float = None, noisy_column=None, embedding_size: int = 10, dropout_rate: float = 0.2,
+                     embedding_size: int = 10, dropout_rate: float = 0.2,
                      output_units=1, embedding_layers_trainable=True):
         categorical_data = dataset.get_data(without_resulting_feature=True).select_dtypes(include='category')
         continuous_features = dataset.get_data(without_resulting_feature=True).select_dtypes(
@@ -103,36 +103,16 @@ class FullyConnectedNeuralNetwork(NeuralNetwork):
             categorical_data = categorical_data_categories
 
         model = FullyConnectedNeuralNetwork._build(config, categorical_data, continuous_features, hidden_units, embedding_size,
-                                     noisy_column, noise_rate, dropout_rate, output_units, embedding_layers_trainable)
+                                     dropout_rate, output_units, embedding_layers_trainable)
         return cls(model)
 
-    @staticmethod
-    def _add_noise_to_column(x, column, rate):
-        if column == -1:
-            return x
-        noised_column = tf.slice(x, begin=[0, column], size=[-1, 1])
-        left_part = tf.slice(x, [0, 0], [-1, column])
-        right_part = tf.slice(x, [0, column + 1], [-1, -1])
-        noised_column = FullyConnectedNeuralNetwork._add_noise(noised_column, rate)
-        return tf.concat(values=[left_part, noised_column, right_part], axis=1)
-
-    @staticmethod
-    def _add_noise(x, rate):
-        return x * (1 + rate)
 
     @staticmethod
     def _build(config, categorical_data_categories, continuous_features: int, hidden_units: int, embedding_size: int,
-               noisy_column, noise_rate, dropout_rate, output_units: int, embedding_layers_trainable):
+               dropout_rate, output_units: int, embedding_layers_trainable):
 
         # create input layer for continuous data
         continuous_input = Input(shape=(continuous_features,), name=config.cont_input)
-        if noisy_column and isinstance(noisy_column, int):
-            noise_layer = Lambda(FullyConnectedNeuralNetwork._add_noise_to_column, trainable=False, arguments={'column': noisy_column,
-                                                                                                 'rate': noise_rate},
-                                 name=str(noisy_column) + config.noisy_layer)
-
-            continuous_input = noise_layer(continuous_input)
-            noisy_column = None
         reshaped_continuous_input = Reshape((1, continuous_features),
                                             name=config.reshaped)(continuous_input)
 
@@ -144,10 +124,6 @@ class FullyConnectedNeuralNetwork(NeuralNetwork):
             categorical_inputs.append(categorical_input)
             embedding_layer = Embedding(size + 1, embedding_size, name=feature, trainable=embedding_layers_trainable)(
                 categorical_input)
-            if noisy_column == feature:
-                categorical_noisy_layer = Lambda(FullyConnectedNeuralNetwork._add_noise, arguments={'rate': noise_rate},
-                                                 name=str(noisy_column) + config.noisy_layer)
-                embedding_layer = categorical_noisy_layer(embedding_layer)
             embedding_layers.append(embedding_layer)
 
         # merge all inputs
@@ -341,11 +317,10 @@ class FeatureSelector:
         for x in categorical_columns:
             self._cat_data[x] = self._source_model.get_layer(x).get_config()["input_dim"] - 1
 
-    def _build_network(self, config, dataset, noisy_column, noise_rate):
+    def _build_network(self, config, dataset):
         noisy_model = FullyConnectedNeuralNetwork.from_scratch(config=config, dataset=dataset,
                                                  hidden_units=self._hid_size, embedding_size=self._emb_size,
-                                                 dropout_rate=self._dropout_rate, noise_rate=noise_rate,
-                                                 noisy_column=noisy_column)
+                                                 dropout_rate=self._dropout_rate)
         # noisy_model.save_plot("noisy_model_plot.png", shapes=True, layer_names=True)
         noisy_model.set_weights_by_name(self._weights)
         return noisy_model
@@ -363,8 +338,10 @@ class FeatureSelector:
         while curr_accuracy >= prev_accuracy:
             for column in training_dataset.get_data().columns:
                 if test_dataset.get_data()[column].dtype.name == 'category':
-                    noisy_model = self._build_network(self._config, dataset=training_dataset, noisy_column=column, noise_rate=noise_rate)
-                    predictor = Predictor(noisy_model, test_dataset)
+                    noisy_dataset = DataSet.copy(test_dataset)
+                    noisy_dataset.add_noise_to_categorical_columns(column, noise_rate)
+                    noisy_model = self._build_network(self._config, dataset=training_dataset)
+                    predictor = Predictor(noisy_model, noisy_dataset)
                 else:
                     noisy_dataset = DataSet.copy(test_dataset)
                     noisy_dataset.add_noise_to_column(column, noise_rate)
@@ -413,11 +390,10 @@ class CorrelationAnalyzer:
         for x in categorical_columns:
             self._cat_data[x] = self._source_model.get_layer(x).get_config()["input_dim"] - 1
 
-    def _build_network(self, config, dataset, noisy_column=None, noise_rate=None, full_copy: bool = False):
+    def _build_network(self, config, dataset, full_copy: bool = False):
         noisy_model = FullyConnectedNeuralNetwork.from_scratch(config=config, dataset=dataset,
                                                  hidden_units=self._hid_size, embedding_size=self._emb_size,
-                                                 dropout_rate=self._dropout_rate, noise_rate=noise_rate,
-                                                 noisy_column=noisy_column, embedding_layers_trainable=False)
+                                                 dropout_rate=self._dropout_rate,embedding_layers_trainable=False)
         if not full_copy:
             noisy_model.set_weights_by_name(self._emb_weights)
         else:
@@ -436,18 +412,22 @@ class CorrelationAnalyzer:
         noise_rate = random.uniform(0, noise_rate)
         for idx, column in enumerate(self._columns):
             if training_dataset.get_data()[column].dtype.name == 'category':
-                noisy_model = self._build_network(self._config, training_dataset, noisy_column=column, noise_rate=noise_rate)
+                noisy_dataset = DataSet.copy(training_dataset)
+                noisy_dataset.add_noise_to_categorical_columns(column, noise_rate)
+                noisy_model = self._build_network(self._config, training_dataset)
                 noisy_model.compile()
-                trainer = Trainer(noisy_model, training_dataset, training_target, epochs=training_epochs)
+                trainer = Trainer(noisy_model, noisy_dataset, training_target, epochs=training_epochs)
                 trainer.train()
                 trainer.evaluate()
-                predictor = Predictor(noisy_model, test_dataset)
+                noisy_test_dataset = DataSet.copy(test_dataset)
+                noisy_test_dataset.add_noise_to_categorical_columns(column, noise_rate)
+                predictor = Predictor(noisy_model, noisy_test_dataset)
             else:
                 noisy_dataset = DataSet.copy(training_dataset)
                 noisy_dataset.add_noise_to_column(column, noise_rate)
                 noisy_model = self._build_network(self._config, training_dataset)
                 noisy_model.compile()
-                trainer = Trainer(noisy_model,training_dataset, training_target, epochs=training_epochs)
+                trainer = Trainer(noisy_model,noisy_dataset, training_target, epochs=training_epochs)
                 trainer.train()
                 trainer.evaluate()
                 noisy_test_dataset = DataSet.copy(test_dataset)
@@ -458,7 +438,9 @@ class CorrelationAnalyzer:
 
         for idx, column in enumerate(self._columns):
             if test_dataset.get_data()[column].dtype.name == 'category':
-                noisy_model = self._build_network(self._config, training_dataset, noisy_column=column, noise_rate=noise_rate, full_copy=True)
+                noisy_dataset = DataSet.copy(test_dataset)
+                noisy_dataset.add_noise_to_categorical_columns(column, noise_rate)
+                noisy_model = self._source_model
                 predictor = Predictor(noisy_model, test_dataset)
             else:
                 noisy_dataset = DataSet.copy(test_dataset)
