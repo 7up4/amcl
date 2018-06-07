@@ -104,12 +104,11 @@ class SqlAlchemyDBHandler(InputHandler):
         self.__dbname = dbname
         self.__port = port
         self.__username = username
-        self.__password = password
         self.__connection = None
 
-    def configure(self):
+    def configure(self, password):
         self.__db = sqlalchemy.create_engine("{}://{}:{}@{}:{}/{}".format(self.__db_dialect, self.__username,
-                                                                          self.__password, self.__hostname,
+                                                                          password, self.__hostname,
                                                                           self.__port, self.__dbname))
 
     def open(self):

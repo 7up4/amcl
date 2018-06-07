@@ -332,9 +332,9 @@ class FeatureSelector:
         self._training_dataset = training_dataset
         categorical_columns = training_dataset.get_data(without_resulting_feature=True).select_dtypes(include='category').columns
         self._weights = self._source_model.get_weights_with_name()
-        self._cat_input_shape = self._source_model.get_layer(config.cat_input+categorical_columns[0]).get_input_shape_at(0)
+        self._cat_input_shape = self._source_model.get_layer(config.cat_input + categorical_columns[0]).get_input_shape_at(0)
         self._cont_input_shape = self._source_model.get_layer(config.cont_input).get_input_shape_at(0)[-1]
-        self._hid_size = self._source_model.get_layer(config.hidden+"1").get_output_shape_at(0)[-1]
+        self._hid_size = self._source_model.get_layer(config.hidden + "1").get_output_shape_at(0)[-1]
         self._emb_size = self._source_model.get_layer(categorical_columns[0]).get_output_shape_at(0)[-1]
         self._dropout_rate = self._source_model.get_layer(config.dropout+"1").get_config()['rate']
         self._cat_data = {}
