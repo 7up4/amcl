@@ -1,4 +1,4 @@
-argparse
+docopt
 numpy
 scipy
 pandas

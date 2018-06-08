@@ -87,10 +87,10 @@ class NeuralNetwork:
             yaml_file.write(model_yaml)
 
 
-class FullyConnectedNeuralNetwork(NeuralNetwork):
+class DenseNeuralNetwork(NeuralNetwork):
     @classmethod
     def from_scratch(cls, config: NeuralNetworkConfig, dataset, hidden_units: int,
-                     embedding_size: int = 10, dropout_rate: float = 0.2,
+                     embedding_size: int = 10, dropout_rate: float = 0.0,
                      output_units=1, embedding_layers_trainable=True):
         categorical_data = dataset.get_data(without_resulting_feature=True).select_dtypes(include='category')
         continuous_features = dataset.get_data(without_resulting_feature=True).select_dtypes(
@@ -102,7 +102,7 @@ class FullyConnectedNeuralNetwork(NeuralNetwork):
                 categorical_data_categories[column] = categorical_data[column].cat.categories.size
             categorical_data = categorical_data_categories
 
-        model = FullyConnectedNeuralNetwork._build(config, categorical_data, continuous_features, hidden_units, embedding_size,
+        model = DenseNeuralNetwork._build(config, categorical_data, continuous_features, hidden_units, embedding_size,
                                      dropout_rate, output_units, embedding_layers_trainable)
         return cls(model)
 
@@ -148,7 +148,7 @@ class FullyConnectedNeuralNetwork(NeuralNetwork):
 class OptimizedNeuralNetwork(NeuralNetwork):
     @classmethod
     def from_scratch(cls, config: NeuralNetworkConfig, dataset: DataSet, correlation_info: list, embedding_size: int=10,
-                     dropout_rate: float=0.2, output_units=1):
+                     dropout_rate: float=0.0, output_units=1):
         flatten_correlation = [item for sublist in correlation_info for item in sublist]
         features = dataset.get_data(without_resulting_feature=True).columns
         diff = list(set(features) - set(flatten_correlation))
@@ -302,7 +302,7 @@ class Predictor:
 
 
 class FeatureSelector:
-    def __init__(self, config: NeuralNetworkConfig, nnet: FullyConnectedNeuralNetwork, training_dataset):
+    def __init__(self, config: NeuralNetworkConfig, nnet: DenseNeuralNetwork, training_dataset):
         self._source_model = nnet
         self._config = config
         self._training_dataset = training_dataset
@@ -317,12 +317,10 @@ class FeatureSelector:
         for x in categorical_columns:
             self._cat_data[x] = self._source_model.get_layer(x).get_config()["input_dim"] - 1
 
-    def _build_network(self, config, dataset):
-        noisy_model = FullyConnectedNeuralNetwork.from_scratch(config=config, dataset=dataset,
+    def _build_network(self, config, dataset, full_copy: bool = False):
+        noisy_model = DenseNeuralNetwork.from_scratch(config=config, dataset=dataset,
                                                  hidden_units=self._hid_size, embedding_size=self._emb_size,
-                                                 dropout_rate=self._dropout_rate)
-        # noisy_model.save_plot("noisy_model_plot.png", shapes=True, layer_names=True)
-        noisy_model.set_weights_by_name(self._weights)
+                                                 dropout_rate=self._dropout_rate,embedding_layers_trainable=False)
         return noisy_model
 
     def run(self, training_dataset, training_target, test_dataset, test_target, noise_rate=0.01, training_epochs=100):
@@ -334,7 +332,7 @@ class FeatureSelector:
         prev_accuracy = predictor.get_score()['accuracy']
         curr_accuracy = prev_accuracy
         features_to_remove = []
-        noise_rate = random.uniform(0, noise_rate)
+        # noise_rate = random.uniform(0, noise_rate)
         while curr_accuracy >= prev_accuracy:
             for column in training_dataset.get_data().columns:
                 if test_dataset.get_data()[column].dtype.name == 'category':
@@ -356,9 +354,10 @@ class FeatureSelector:
             features_to_remove.append(less_sensitive_feature)
             test_dataset.rm_less_sensitive()
             training_dataset.rm_less_sensitive()
-            self._source_model = FullyConnectedNeuralNetwork.from_scratch(self._config, training_dataset, embedding_size=self._emb_size,
-                                                 hidden_units=self._hid_size, dropout_rate=self._dropout_rate)
+            emb_weights = {feature: self._weights[feature] for feature in training_dataset.get_data().select_dtypes(include='category').columns.tolist()}
+            self._source_model = self._build_network(self._config, training_dataset)
             self._source_model.compile()
+            self._source_model.set_weights_by_name(emb_weights)
             trainer = Trainer(self._source_model, training_dataset, training_target, epochs=training_epochs)
             trainer.train()
             trainer.evaluate()
@@ -371,7 +370,7 @@ class FeatureSelector:
 
 
 class CorrelationAnalyzer:
-    def __init__(self, config: NeuralNetworkConfig, nnet: FullyConnectedNeuralNetwork, training_dataset):
+    def __init__(self, config: NeuralNetworkConfig, nnet: DenseNeuralNetwork, training_dataset):
         self._source_model = nnet
         self._config = config
         self._training_dataset = training_dataset
@@ -391,7 +390,7 @@ class CorrelationAnalyzer:
             self._cat_data[x] = self._source_model.get_layer(x).get_config()["input_dim"] - 1
 
     def _build_network(self, config, dataset, full_copy: bool = False):
-        noisy_model = FullyConnectedNeuralNetwork.from_scratch(config=config, dataset=dataset,
+        noisy_model = DenseNeuralNetwork.from_scratch(config=config, dataset=dataset,
                                                  hidden_units=self._hid_size, embedding_size=self._emb_size,
                                                  dropout_rate=self._dropout_rate,embedding_layers_trainable=False)
         if not full_copy:
@@ -409,7 +408,7 @@ class CorrelationAnalyzer:
         self._emb_weights = {feature: self._weights[feature] for feature in list(self._cat_data.keys())}
         predictor = Predictor(self._source_model, test_dataset)
         self._table[0][0] = np.sum(predictor.predict())
-        noise_rate = random.uniform(0, noise_rate)
+        # noise_rate = random.uniform(0, noise_rate)
         for idx, column in enumerate(self._columns):
             if training_dataset.get_data()[column].dtype.name == 'category':
                 noisy_dataset = DataSet.copy(training_dataset)
