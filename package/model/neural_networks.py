@@ -463,12 +463,13 @@ class CorrelationAnalyzer:
         candidates = pd.DataFrame(columns=self._columns)
         fcandidates = dict()
         for column in self._table:
-            candidates[column] = (self._table.loc[self._table[column] > self._table[column]['mean']]).index.tolist()
+            candidates[column] = pd.Series((self._table.loc[self._table[column] > self._table[column]['mean']]).index)
         for column in candidates:
             fcandidates[column] = []
             for row in range(candidates.shape[0]):
-                if column in candidates[candidates[column][row]].tolist():
-                    fcandidates[column].append(candidates[column][row])
+                if candidates[column][row] == candidates[column][row]:
+                    if column in candidates[candidates[column][row]].tolist():
+                        fcandidates[column].append(candidates[column][row])
         fcandidates = list(filter(None, fcandidates.values()))
         fcandidates = [list(x) for x in set(tuple(x) for x in fcandidates)]
         return fcandidates
