@@ -140,10 +140,10 @@ class DataSet:
         normalized_cont_f = (continuous_features-continuous_features.mean())/continuous_features.std()
         self.__data.update(normalized_cont_f)
 
-    def add_noise_to_column(self, column, noise_rate=0.001):
+    def add_noise_to_column(self, column, noise_rate=0.01):
         self.__data[column] *= (1+noise_rate)
 
-    def add_noise_to_categorical_columns(self, column, noise_rate=0.001):
+    def add_noise_to_categorical_columns(self, column, noise_rate=0.01):
         orig_column = self.__data[column]
         categories = orig_column.cat.categories.tolist()
         random_rows = random.sample(list(orig_column.index), math.ceil(orig_column.size*noise_rate))
