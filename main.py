@@ -79,7 +79,7 @@ if __name__ == '__main__':
             print("Prediction accuracy: %0.2f %%" % (predictor.get_score()['accuracy'] * 100))
 
             feature_selector = FeatureSelector(config, network, training_data)
-            less_sensitive_features = feature_selector.run(training_data, training_target, test_data, test_target, noise_rate=0.001, training_epochs=100)
+            less_sensitive_features = feature_selector.run(training_data, training_target, test_data, test_target, noise_rate=0.01, training_epochs=100)
             print(less_sensitive_features)
             training_data.drop_columns(less_sensitive_features)
             test_data.drop_columns(less_sensitive_features)
@@ -92,7 +92,7 @@ if __name__ == '__main__':
             network = DenseNeuralNetwork.from_file('after_feature_selector.h5')
 
             correlation_analyzer = CorrelationAnalyzer(config, network, training_data)
-            table = correlation_analyzer.run(test_data, training_data, training_target, noise_rate=0.001, training_epochs=100)
+            table = correlation_analyzer.run(test_data, training_data, training_target, noise_rate=0.01, training_epochs=100)
             correlation_info = correlation_analyzer.select_candidates()
             print(correlation_info)
 

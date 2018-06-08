@@ -350,7 +350,7 @@ class FeatureSelector:
         noisy_model.set_weights_by_name(self._weights)
         return noisy_model
 
-    def run(self, training_dataset, training_target, test_dataset, test_target, noise_rate=0.001, training_epochs=100):
+    def run(self, training_dataset, training_target, test_dataset, test_target, noise_rate=0.01, training_epochs=100):
         training_dataset = DataSet.copy(training_dataset)
         test_dataset = DataSet.copy(test_dataset)
         predictor = Predictor(self._source_model, test_dataset)
@@ -424,7 +424,7 @@ class CorrelationAnalyzer:
             noisy_model.set_weights_by_name(self._weights)
         return noisy_model
 
-    def run(self, test_dataset, training_dataset, training_target, noise_rate=0.001, training_epochs=100):
+    def run(self, test_dataset, training_dataset, training_target, noise_rate=0.01, training_epochs=100):
         training_dataset = DataSet.copy(training_dataset)
         trainer = Trainer(self._source_model, training_dataset, training_target, epochs=training_epochs)
         trainer.train()
