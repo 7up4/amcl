@@ -87,7 +87,7 @@ class NeuralNetwork:
             yaml_file.write(model_yaml)
 
 
-class FullyConnectedNeuralNetwork(NeuralNetwork):
+class DenseNeuralNetwork(NeuralNetwork):
     @classmethod
     def from_scratch(cls, config: NeuralNetworkConfig, dataset, hidden_units: int,
                      noise_rate: float = None, noisy_column=None, embedding_size: int = 10, dropout_rate: float = 0.2,
@@ -102,7 +102,7 @@ class FullyConnectedNeuralNetwork(NeuralNetwork):
                 categorical_data_categories[column] = categorical_data[column].cat.categories.size
             categorical_data = categorical_data_categories
 
-        model = FullyConnectedNeuralNetwork._build(config, categorical_data, continuous_features, hidden_units, embedding_size,
+        model = DenseNeuralNetwork._build(config, categorical_data, continuous_features, hidden_units, embedding_size,
                                      noisy_column, noise_rate, dropout_rate, output_units, embedding_layers_trainable)
         return cls(model)
 
@@ -113,7 +113,7 @@ class FullyConnectedNeuralNetwork(NeuralNetwork):
         noised_column = tf.slice(x, begin=[0, column], size=[-1, 1])
         left_part = tf.slice(x, [0, 0], [-1, column])
         right_part = tf.slice(x, [0, column + 1], [-1, -1])
-        noised_column = FullyConnectedNeuralNetwork._add_noise(noised_column, rate)
+        noised_column = DenseNeuralNetwork._add_noise(noised_column, rate)
         return tf.concat(values=[left_part, noised_column, right_part], axis=1)
 
     @staticmethod
@@ -127,7 +127,7 @@ class FullyConnectedNeuralNetwork(NeuralNetwork):
         # create input layer for continuous data
         continuous_input = Input(shape=(continuous_features,), name=config.cont_input)
         if noisy_column and isinstance(noisy_column, int):
-            noise_layer = Lambda(FullyConnectedNeuralNetwork._add_noise_to_column, trainable=False, arguments={'column': noisy_column,
+            noise_layer = Lambda(DenseNeuralNetwork._add_noise_to_column, trainable=False, arguments={'column': noisy_column,
                                                                                                  'rate': noise_rate},
                                  name=str(noisy_column) + config.noisy_layer)
 
@@ -145,7 +145,7 @@ class FullyConnectedNeuralNetwork(NeuralNetwork):
             embedding_layer = Embedding(size + 1, embedding_size, name=feature, trainable=embedding_layers_trainable)(
                 categorical_input)
             if noisy_column == feature:
-                categorical_noisy_layer = Lambda(FullyConnectedNeuralNetwork._add_noise, arguments={'rate': noise_rate},
+                categorical_noisy_layer = Lambda(DenseNeuralNetwork._add_noise, arguments={'rate': noise_rate},
                                                  name=str(noisy_column) + config.noisy_layer)
                 embedding_layer = categorical_noisy_layer(embedding_layer)
             embedding_layers.append(embedding_layer)
@@ -326,7 +326,7 @@ class Predictor:
 
 
 class FeatureSelector:
-    def __init__(self, config: NeuralNetworkConfig, nnet: FullyConnectedNeuralNetwork, training_dataset):
+    def __init__(self, config: NeuralNetworkConfig, nnet: DenseNeuralNetwork, training_dataset):
         self._source_model = nnet
         self._config = config
         self._training_dataset = training_dataset
@@ -342,7 +342,7 @@ class FeatureSelector:
             self._cat_data[x] = self._source_model.get_layer(x).get_config()["input_dim"] - 1
 
     def _build_network(self, config, dataset, noisy_column, noise_rate):
-        noisy_model = FullyConnectedNeuralNetwork.from_scratch(config=config, dataset=dataset,
+        noisy_model = DenseNeuralNetwork.from_scratch(config=config, dataset=dataset,
                                                  hidden_units=self._hid_size, embedding_size=self._emb_size,
                                                  dropout_rate=self._dropout_rate, noise_rate=noise_rate,
                                                  noisy_column=noisy_column)
@@ -379,7 +379,7 @@ class FeatureSelector:
             features_to_remove.append(less_sensitive_feature)
             test_dataset.rm_less_sensitive()
             training_dataset.rm_less_sensitive()
-            self._source_model = FullyConnectedNeuralNetwork.from_scratch(self._config, training_dataset, embedding_size=self._emb_size,
+            self._source_model = DenseNeuralNetwork.from_scratch(self._config, training_dataset, embedding_size=self._emb_size,
                                                  hidden_units=self._hid_size, dropout_rate=self._dropout_rate)
             self._source_model.compile()
             trainer = Trainer(self._source_model, training_dataset, training_target, epochs=training_epochs)
@@ -394,7 +394,7 @@ class FeatureSelector:
 
 
 class CorrelationAnalyzer:
-    def __init__(self, config: NeuralNetworkConfig, nnet: FullyConnectedNeuralNetwork, training_dataset):
+    def __init__(self, config: NeuralNetworkConfig, nnet: DenseNeuralNetwork, training_dataset):
         self._source_model = nnet
         self._config = config
         self._training_dataset = training_dataset
@@ -414,7 +414,7 @@ class CorrelationAnalyzer:
             self._cat_data[x] = self._source_model.get_layer(x).get_config()["input_dim"] - 1
 
     def _build_network(self, config, dataset, noisy_column=None, noise_rate=None, full_copy: bool = False):
-        noisy_model = FullyConnectedNeuralNetwork.from_scratch(config=config, dataset=dataset,
+        noisy_model = DenseNeuralNetwork.from_scratch(config=config, dataset=dataset,
                                                  hidden_units=self._hid_size, embedding_size=self._emb_size,
                                                  dropout_rate=self._dropout_rate, noise_rate=noise_rate,
                                                  noisy_column=noisy_column, embedding_layers_trainable=False)

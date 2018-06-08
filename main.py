@@ -5,8 +5,8 @@ import numpy as np
 from PyQt5.QtCore import QCoreApplication
 
 from package.model.datasets import DataSet
-from package.model.input_handlers import SqlAlchemyDBHandler, QtSqlDBHandler, DataFileHandler
-from package.model.neural_networks import FullyConnectedNeuralNetwork, OptimizedNeuralNetwork, Trainer, FeatureSelector, NeuralNetworkConfig, Predictor, CorrelationAnalyzer
+from package.model.input_handlers import SqlAlchemyDBHandler, QtSqlDBHandler, FSHandler
+from package.model.neural_networks import DenseNeuralNetwork, OptimizedNeuralNetwork, Trainer, FeatureSelector, NeuralNetworkConfig, Predictor, CorrelationAnalyzer
 
 from keras.layers import Concatenate, Input, Embedding, Lambda
 from keras.layers.core import Dense, Dropout, Reshape
@@ -38,7 +38,7 @@ if __name__ == '__main__':
         print(ddd)
 
     if args.input:
-        ihandler = DataFileHandler(args.input, ',', 1, 0, ['?'])
+        ihandler = FSHandler(args.input, ',', 1, 0, ['?'])
         dataset = DataSet.load("num", ihandler)
         dataset.drop_invalid_data()
         # dataset.shuffle()
@@ -59,7 +59,7 @@ if __name__ == '__main__':
         if debug == 1:
             # Create neural network model
             config = NeuralNetworkConfig()
-            network = FullyConnectedNeuralNetwork.from_file('my_model1.h5')
+            network = DenseNeuralNetwork.from_file('my_model1.h5')
             network.get_model().summary()
 
             test_data = DataSet.copy(dataset, start=211, without_resulting_feature=True)
@@ -84,12 +84,12 @@ if __name__ == '__main__':
             training_data.drop_columns(less_sensitive_features)
             test_data.drop_columns(less_sensitive_features)
 
-            network = FullyConnectedNeuralNetwork.from_scratch(config, training_data, embedding_size=3,
+            network = DenseNeuralNetwork.from_scratch(config, training_data, embedding_size=3,
                                                  hidden_units=13, dropout_rate=0.2)
             network.compile()
             network.to_h5('after_feature_selector.h5')
 
-            network = FullyConnectedNeuralNetwork.from_file('after_feature_selector.h5')
+            network = DenseNeuralNetwork.from_file('after_feature_selector.h5')
 
             correlation_analyzer = CorrelationAnalyzer(config, network, training_data)
             table = correlation_analyzer.run(test_data, training_data, training_target, noise_rate=0.001, training_epochs=100)
@@ -116,7 +116,7 @@ if __name__ == '__main__':
 
             # Create neural network model
             config = NeuralNetworkConfig()
-            network = FullyConnectedNeuralNetwork.from_scratch(config, training_data, embedding_size=3, hidden_units=13, dropout_rate=0.2)
+            network = DenseNeuralNetwork.from_scratch(config, training_data, embedding_size=3, hidden_units=13, dropout_rate=0.2)
             network.save_plot()
             network.compile()
 

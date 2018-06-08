@@ -17,7 +17,7 @@ class InputHandler(object):
         pass
 
 
-class DataFileHandler(InputHandler):
+class FSHandler(InputHandler):
     def __init__(self, file_address: str, delimiter: str, header_line: int, feature_classes_line: int,
                  na_values: list):
         self.__file = open(file_address)
