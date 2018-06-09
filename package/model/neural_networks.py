@@ -418,9 +418,7 @@ class CorrelationAnalyzer:
                 trainer = Trainer(noisy_model, noisy_dataset, training_target, epochs=training_epochs)
                 trainer.train()
                 trainer.evaluate()
-                noisy_test_dataset = DataSet.copy(test_dataset)
-                noisy_test_dataset.add_noise_to_categorical_columns(column, noise_rate)
-                predictor = Predictor(noisy_model, noisy_test_dataset)
+                predictor = Predictor(noisy_model, test_dataset)
             else:
                 noisy_dataset = DataSet.copy(training_dataset)
                 noisy_dataset.add_noise_to_column(column, noise_rate)
@@ -429,9 +427,7 @@ class CorrelationAnalyzer:
                 trainer = Trainer(noisy_model,noisy_dataset, training_target, epochs=training_epochs)
                 trainer.train()
                 trainer.evaluate()
-                noisy_test_dataset = DataSet.copy(test_dataset)
-                noisy_test_dataset.add_noise_to_column(column, noise_rate)
-                predictor = Predictor(noisy_model, noisy_test_dataset)
+                predictor = Predictor(noisy_model, test_dataset)
             noisy_prediction = predictor.predict()
             self._table[0][idx+1] = abs(np.sum(noisy_prediction) - self._table[0][0])
 
@@ -465,8 +461,9 @@ class CorrelationAnalyzer:
             candidates[column] = pd.Series((self._table.loc[self._table[column] > self._table[column]['mean']]).index)
         for column in candidates:
             fcandidates[column] = []
+            fcandidates[column].append(column)
             for row in range(candidates.shape[0]):
-                if candidates[column][row] == candidates[column][row]:
+                if candidates[column][row] == candidates[column][row] and candidates[column][row] != column:
                     if column in candidates[candidates[column][row]].tolist():
                         fcandidates[column].append(candidates[column][row])
         fcandidates = list(filter(None, fcandidates.values()))
