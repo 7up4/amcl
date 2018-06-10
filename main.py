@@ -4,17 +4,19 @@ Usage:
 
 Options:
     --debug                     Debugging mode (temporary)
+    --use-batch-normalization   Use Batch Normalization to speed up learning
     --dataset=dir               Dataset directory
     --embedding_size=<value>    Embedding size for categorical features [default: 3]
     --dropout_rate=<float>      Dropot rate for regularization [default: 0.0]
     --training_epochs=<value>   Number of training epochs [default: 100]
+    --hidden_units=<value>      Number of units in hidden layer [default: 4]
 """
 from docopt import docopt
 import sys
 import pandas as pd
 import numpy as np
 from PyQt5.QtCore import QCoreApplication
-
+from keras import optimizers
 from package.model.datasets import DataSet
 from package.model.input_handlers import SqlAlchemyDBHandler, QtSqlDBHandler, FSHandler
 from package.model.neural_networks import DenseNeuralNetwork, OptimizedNeuralNetwork, Trainer, FeatureSelector, NeuralNetworkConfig, Predictor, CorrelationAnalyzer
@@ -45,6 +47,8 @@ if __name__ == '__main__':
         emb_size = int(argv['--embedding_size'])
         dropout_rate = float(argv['--dropout_rate'])
         training_epochs = int(argv['--training_epochs'])
+        hidden_units = int(argv['--hidden_units'])
+        batch_normalization = argv['--use-batch-normalization']
 
         ihandler = FSHandler(argv['--dataset'], ',', 1, 0, ['?'])
         dataset = DataSet.load("num", ihandler)
@@ -65,7 +69,7 @@ if __name__ == '__main__':
 
         if argv['--debug']:
             # Create neural network model
-            config = NeuralNetworkConfig()
+            config = NeuralNetworkConfig(batch_normalization=batch_normalization)
             network = DenseNeuralNetwork.from_file('my_model.h5')
             network.get_model().summary()
 
@@ -99,11 +103,12 @@ if __name__ == '__main__':
             correlation_analyzer = CorrelationAnalyzer(config, network, training_data)
             table = correlation_analyzer.run(test_data, training_data, training_target, noise_rate=0.1, training_epochs=training_epochs)
             correlation_info = correlation_analyzer.select_candidates()
+            # correlation_info = [['trestbps', 'chol', 'thalach', 'oldpeak', 'ca']]
             print(correlation_info)
 
             network = OptimizedNeuralNetwork.from_scratch(config, training_data, correlation_info, embedding_size=emb_size, dropout_rate=dropout_rate, output_units=1)
             network.compile()
-
+            network.save_plot('optimized_network.png', show_layer_names=True)
             trainer = Trainer(network, training_data, training_target, epochs=training_epochs)
             trainer.train()
             trainer.evaluate()
@@ -119,9 +124,9 @@ if __name__ == '__main__':
             training_target = training_data.get_resulting_series().values
 
             # Create neural network model
-            config = NeuralNetworkConfig()
-            network = DenseNeuralNetwork.from_scratch(config, training_data, embedding_size=emb_size, hidden_units=13, dropout_rate=dropout_rate)
-            network.save_plot()
+            config = NeuralNetworkConfig(batch_normalization=batch_normalization)
+            network = DenseNeuralNetwork.from_scratch(config, training_data, embedding_size=emb_size, hidden_units=hidden_units, dropout_rate=dropout_rate)
+            network.save_plot(layer_names=True)
             network.compile()
 
             # Create trainer and train a little

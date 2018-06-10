@@ -3,6 +3,7 @@ from .metadata import Metadata
 import copy
 import math
 import random
+import numpy as np
 from .input_handlers import InputHandler
 from scipy.stats import chisquare
 from scipy.stats import mannwhitneyu
@@ -133,9 +134,6 @@ class DataSet:
         return self.__data.select_dtypes(include=dtype)
 
     def normalize(self):
-        # cont_features = self.__dataset.select_dtypes(exclude='category').columns.tolist()
-        # normalized_data = preprocessing.normalize(self.__dataset[cont_features])
-        # self.__dataset[cont_features] = normalized_data
         continuous_features = self.__data.select_dtypes(exclude='category')
         normalized_cont_f = (continuous_features-continuous_features.mean())/continuous_features.std()
         self.__data.update(normalized_cont_f)

@@ -3,9 +3,11 @@ import matplotlib.pyplot as plt
 import random
 import pandas as pd
 import numpy as np
+import keras.initializers
+import keras.optimizers
 
 from sklearn.metrics import roc_curve, auc
-from keras.layers import Concatenate, Input, Embedding, Lambda
+from keras.layers import Concatenate, Input, Embedding, Lambda, Activation, BatchNormalization
 from keras.layers.core import Dense, Dropout, Reshape
 from keras.models import load_model, model_from_json, model_from_yaml, Model
 from keras.utils.vis_utils import plot_model
@@ -18,7 +20,7 @@ class NeuralNetworkConfig:
     def __init__(self, categorical_input: str="cat_input", continuous_input: str="cont_input", output: str="output",
                  reshaped_output: str="reshaped_output", noisy_layer: str="noisy", kernel_initializer: str="uniform",
                  hidden: str = "hidden", reshaped: str="reshaped", dropout: str="dropout", merge: str="merge",
-                 activation: str="relu", output_activation: str="sigmoid"):
+                 activation: str="relu", output_activation: str="sigmoid", batch_normalization: bool=False):
         self.kernel_initializer = kernel_initializer
         self.activation = activation
         self.output_activation = output_activation
@@ -31,6 +33,7 @@ class NeuralNetworkConfig:
         self.dropout = dropout
         self.output = output
         self.reshaped_output = reshaped_output
+        self.batch_normalization = batch_normalization
 
 
 class NeuralNetwork:
@@ -70,7 +73,7 @@ class NeuralNetwork:
     def save_plot(self, to_file='model_plot.svg', shapes=False, layer_names=False):
         plot_model(self.__model, to_file=to_file, show_shapes=shapes, show_layer_names=layer_names)
 
-    def compile(self, loss='binary_crossentropy', optimizer='adam'):
+    def compile(self, loss='binary_crossentropy', optimizer=keras.optimizers.Adam()):
         self.__model.compile(loss=loss, optimizer=optimizer, metrics=['accuracy'])
 
     def to_h5(self, to_file='my_model.h5'):
@@ -130,12 +133,17 @@ class DenseNeuralNetwork(NeuralNetwork):
         merge_layer = Concatenate(name=config.merge)(embedding_layers + [reshaped_continuous_input])
 
         # hidden layers
-        hidden_layer1 = Dense(hidden_units, activation=config.activation, kernel_initializer=config.kernel_initializer,
-                              name=config.hidden + "1")(merge_layer)
-        dropout_layer1 = Dropout(dropout_rate, name=config.dropout + "1")(hidden_layer1)
+        hidden_layer = Dense(hidden_units, kernel_initializer=config.kernel_initializer,
+                              name=config.hidden)(merge_layer)
+        if config.batch_normalization:
+            hidden_layer = BatchNormalization()(hidden_layer)
+        hidden_layer = Activation(config.activation)(hidden_layer)
+
+        dropout_layer = Dropout(dropout_rate, name=config.dropout)(hidden_layer)
 
         # output_layer
-        output_layer = Dense(output_units, activation=config.output_activation, name=config.output)(dropout_layer1)
+        output_layer = Dense(output_units, name=config.output)(dropout_layer)
+        output_layer = Activation(config.output_activation)(output_layer)
 
         # add reshape layer since output should be vector
         output_layer = Reshape((1,), name=config.reshaped_output)(output_layer)
@@ -187,14 +195,21 @@ class OptimizedNeuralNetwork(NeuralNetwork):
             coupled_layers = [feature_layers[feature] for feature in couple]
             if len(couple) > 1:
                 merge_layer = Concatenate()(coupled_layers)
-                hidden_layer = Dense(1, activation=config.activation, kernel_initializer=config.kernel_initializer)(merge_layer)
+                hidden_layer = Dense(1, kernel_initializer=config.kernel_initializer)(merge_layer)
+                if config.batch_normalization:
+                    hidden_layer = BatchNormalization()(hidden_layer)
+                hidden_layer = Activation(config.activation)(hidden_layer)
             else:
-                hidden_layer = Dense(1, activation=config.activation, kernel_initializer=config.kernel_initializer)(coupled_layers[0])
+                hidden_layer = Dense(1, kernel_initializer=config.kernel_initializer)(coupled_layers[0])
+                if config.batch_normalization:
+                    hidden_layer = BatchNormalization()(hidden_layer)
+                hidden_layer = Activation(config.activation)(hidden_layer)
             hidden_layers.append(hidden_layer)
         merge_layer = Concatenate()(hidden_layers)
         dropout_layer = Dropout(dropout_rate, name=config.dropout)(merge_layer)
         # output_layer
-        output_layer = Dense(1, activation=config.output_activation, name=config.output)(dropout_layer)
+        output_layer = Dense(1, name=config.output)(dropout_layer)
+        output_layer = Activation(config.output_activation)(output_layer)
         # add reshape layer since output should be vector
         output_layer = Reshape((output_units,), name=config.reshaped_output)(output_layer)
         # create final model
@@ -310,9 +325,9 @@ class FeatureSelector:
         self._weights = self._source_model.get_weights_with_name()
         self._cat_input_shape = self._source_model.get_layer(config.cat_input+categorical_columns[0]).get_input_shape_at(0)
         self._cont_input_shape = self._source_model.get_layer(config.cont_input).get_input_shape_at(0)[-1]
-        self._hid_size = self._source_model.get_layer(config.hidden+"1").get_output_shape_at(0)[-1]
+        self._hid_size = self._source_model.get_layer(config.hidden).get_output_shape_at(0)[-1]
         self._emb_size = self._source_model.get_layer(categorical_columns[0]).get_output_shape_at(0)[-1]
-        self._dropout_rate = self._source_model.get_layer(config.dropout+"1").get_config()['rate']
+        self._dropout_rate = self._source_model.get_layer(config.dropout).get_config()['rate']
         self._cat_data = {}
         for x in categorical_columns:
             self._cat_data[x] = self._source_model.get_layer(x).get_config()["input_dim"] - 1
@@ -381,9 +396,9 @@ class CorrelationAnalyzer:
         self._emb_weights = None
         self._cat_input_shape = self._source_model.get_layer(config.cat_input+categorical_columns[0]).get_input_shape_at(0)
         self._cont_input_shape = self._source_model.get_layer(config.cont_input).get_input_shape_at(0)[-1]
-        self._hid_size = self._source_model.get_layer(config.hidden+"1").get_output_shape_at(0)[-1]
+        self._hid_size = self._source_model.get_layer(config.hidden).get_output_shape_at(0)[-1]
         self._emb_size = self._source_model.get_layer(categorical_columns[0]).get_output_shape_at(0)[-1]
-        self._dropout_rate = self._source_model.get_layer(config.dropout+"1").get_config()['rate']
+        self._dropout_rate = self._source_model.get_layer(config.dropout).get_config()['rate']
         self._table = np.empty([len(categorical_columns)+self._cont_input_shape+1, len(categorical_columns)+self._cont_input_shape+1])
         self._cat_data = {}
         for x in categorical_columns:
