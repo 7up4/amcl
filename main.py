@@ -6,10 +6,10 @@ Options:
     --debug                     Debugging mode (temporary)
     --use-batch-normalization   Use Batch Normalization to speed up learning
     --dataset=dir               Dataset directory
-    --embedding_size=<value>    Embedding size for categorical features [default: 3]
-    --dropout_rate=<float>      Dropot rate for regularization [default: 0.0]
-    --training_epochs=<value>   Number of training epochs [default: 100]
-    --hidden_units=<value>      Number of units in hidden layer [default: 4]
+    --embedding-size=<value>    Embedding size for categorical features [default: 3]
+    --dropout-rate=<float>      Dropot rate for regularization [default: 0.0]
+    --training-epochs=<value>   Number of training epochs [default: 100]
+    --hidden-units=<value>      Number of units in hidden layer [default: 4]
 """
 from docopt import docopt
 import sys
@@ -44,10 +44,10 @@ if __name__ == '__main__':
         print(ddd)
 
     if argv['--dataset']:
-        emb_size = int(argv['--embedding_size'])
-        dropout_rate = float(argv['--dropout_rate'])
-        training_epochs = int(argv['--training_epochs'])
-        hidden_units = int(argv['--hidden_units'])
+        emb_size = int(argv['--embedding-size'])
+        dropout_rate = float(argv['--dropout-rate'])
+        training_epochs = int(argv['--training-epochs'])
+        hidden_units = int(argv['--hidden-units'])
         batch_normalization = argv['--use-batch-normalization']
 
         ihandler = FSHandler(argv['--dataset'], ',', 1, 0, ['?'])
@@ -55,7 +55,7 @@ if __name__ == '__main__':
         dataset.drop_invalid_data()
         # dataset.shuffle()
         dataset.combine_classes(feature_name='num', from_classes=[2, 3, 4], to_class=1)
-        dataset.bucketize('age', 10, list(range(0, 10)))
+        # dataset.bucketize('age', 5, list(range(0, 5)))
         dataset.calculate_statistics([1, 2, 3], [0])
         # print(dataset.get_features().get_table())
         # print(dataset.get_invaluable_features())
@@ -108,7 +108,7 @@ if __name__ == '__main__':
 
             network = OptimizedNeuralNetwork.from_scratch(config, training_data, correlation_info, embedding_size=emb_size, dropout_rate=dropout_rate, output_units=1)
             network.compile()
-            network.save_plot('optimized_network.png', show_layer_names=True)
+            network.save_plot('optimized_network.png', layer_names=True)
             trainer = Trainer(network, training_data, training_target, epochs=training_epochs)
             trainer.train()
             trainer.evaluate()

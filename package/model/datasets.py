@@ -5,7 +5,7 @@ import math
 import random
 import numpy as np
 from .input_handlers import InputHandler
-from scipy.stats import chisquare
+from scipy.stats import chisquare, chi2_contingency
 from scipy.stats import mannwhitneyu
 from sklearn import preprocessing
 
@@ -40,9 +40,11 @@ class DataSet:
         for feature in self.__features.get_columns():
             feature_type = data[feature].dtype.name
             if feature_type == "category":
-                cp_harm_categories = harm[feature].value_counts(sort=False).tolist()
-                cp_no_harm_categories = no_harm[feature].value_counts(sort=False).tolist()
-                result = chisquare(cp_harm_categories, cp_no_harm_categories)
+                harm_categories = harm[feature].value_counts(sort=False)
+                no_harm_categories = no_harm[feature].value_counts(sort=False)
+                observed = pd.concat([no_harm_categories, harm_categories], axis=1).values.transpose()
+                _, _, _, expected = chi2_contingency(observed)
+                result = chisquare(observed.flatten(), expected.flatten())
             else:
                 result = mannwhitneyu(no_harm[feature], harm[feature], alternative='two-sided')
             if result:
