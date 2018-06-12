@@ -163,6 +163,8 @@ class OptimizedNeuralNetwork(NeuralNetwork):
                      dropout_rate: float=0.0, output_units=1):
         flatten_correlation = [item for sublist in correlation_info for item in sublist]
         features = dataset.get_data(without_resulting_feature=True).columns
+        if not all(elem in features for elem in flatten_correlation):
+            return None
         diff = list(set(features) - set(flatten_correlation))
         diff = [[item] for item in diff]
         correlation_info.extend(diff)

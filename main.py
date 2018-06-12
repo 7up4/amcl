@@ -1,6 +1,6 @@
 """amcl
 Usage:
-    main.py (predict|optimize|create-naive-model) --model-path=<str> --dataset=<str> --resulting-feature=<str> [--training-data=<float>|--test-data=<float>] [options]
+    main.py (predict|optimize|create-naive-model|create-optimized-model) --model-path=<str> --dataset=<str> --resulting-feature=<str> [--training-data=<float>|--test-data=<float>] [options]
 
 Options:
     --debug                     Debugging mode (temporary)
@@ -22,6 +22,7 @@ Options:
     --na-values=<chr>           Empty values [default: ['?']]
     --training-data=<float>     Percentage of training data [default: 0.8]
     --test-data=<float>         Percentage of test data [default: 0.2]
+    --correlation-info=<list>   Correlation info [default: []]
 """
 from docopt import docopt
 from numpy import random
@@ -87,6 +88,7 @@ if __name__ == '__main__':
     na_values = literal_eval(argv['--na-values'])
     training_sample = float(argv['--training-data'])
     test_sample = float(argv['--test-data'])
+    correlation_info = literal_eval(argv['--correlation-info'])
 
     ihandler = FSHandler(dataset_path, delimiter, header_line, classes_line, na_values)
     dataset = DataSet.load(resulting_feature, ihandler)
@@ -95,8 +97,6 @@ if __name__ == '__main__':
         dataset.shuffle()
     dataset.combine_classes(feature_name=resulting_feature, from_classes=[2, 3, 4], to_class=1)
     dataset.calculate_statistics([1], [0])
-    print(dataset.get_features().get_table())
-    print(dataset.get_invaluable_features())
     dataset.remove_invaluable_features()
 
     training_data = DataSet.copy(dataset, stop=210)
@@ -112,26 +112,25 @@ if __name__ == '__main__':
     config = NeuralNetworkConfig(batch_normalization=batch_normalization)
 
     if optimizing:
-        enable_reproducible_mode()
         training_data.drop_resulting_feature()
-        # Create neural network model
-        network = NeuralNetwork.from_file(model_path)
+        if not len(correlation_info):
+            enable_reproducible_mode()
+            network = NeuralNetwork.from_file(model_path)
+            feature_selector = FeatureSelector(config, network, training_data)
+            less_sensitive_features = feature_selector.run(training_data, training_target, test_data, test_target, noise_rate=noise_rate, training_epochs=training_epochs)
+            print(less_sensitive_features)
 
-        feature_selector = FeatureSelector(config, network, training_data)
-        less_sensitive_features = feature_selector.run(training_data, training_target, test_data, test_target, noise_rate=noise_rate, training_epochs=training_epochs)
-        print(less_sensitive_features)
+            training_data.drop_columns(less_sensitive_features)
+            test_data.drop_columns(less_sensitive_features)
 
-        training_data.drop_columns(less_sensitive_features)
-        test_data.drop_columns(less_sensitive_features)
+            network = DenseNeuralNetwork.from_scratch(config, training_data, embedding_size=emb_size,
+                                                 hidden_units=hidden_units, dropout_rate=dropout_rate)
+            network.compile()
 
-        network = DenseNeuralNetwork.from_scratch(config, training_data, embedding_size=emb_size,
-                                             hidden_units=hidden_units, dropout_rate=dropout_rate)
-        network.compile()
-
-        correlation_analyzer = CorrelationAnalyzer(config, network, training_data)
-        table = correlation_analyzer.run(test_data, training_data, training_target, noise_rate=noise_rate, training_epochs=training_epochs)
-        correlation_info = correlation_analyzer.select_candidates()
-        print(correlation_info)
+            correlation_analyzer = CorrelationAnalyzer(config, network, training_data)
+            table = correlation_analyzer.run(test_data, training_data, training_target, noise_rate=noise_rate, training_epochs=training_epochs)
+            correlation_info = correlation_analyzer.select_candidates()
+            print(correlation_info)
 
         network = OptimizedNeuralNetwork.from_scratch(config, training_data, correlation_info, embedding_size=emb_size, dropout_rate=dropout_rate, output_units=1)
         network.compile()
