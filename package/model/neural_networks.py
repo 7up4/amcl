@@ -1,3 +1,4 @@
+import os
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import random
@@ -54,9 +55,11 @@ class NeuralNetwork:
     def get_weights(self):
         return self.__model.get_weights()
 
-    def get_weights_for_feature(self, feature):
-        res = self.__model.get_layer(feature).get_weights()
-        return res
+    def set_weights(self, weights):
+        self.__model.set_weights(weights)
+
+    def get_weights_for_layer(self, feature):
+        return self.__model.get_layer(feature).get_weights()
 
     def get_weights_with_name(self):
         model = self.__model
@@ -66,28 +69,29 @@ class NeuralNetwork:
             weights.append(model.get_layer(name).get_weights())
         return dict(zip(names, weights))
 
-    def set_weights_by_name(self, weigths):
-        for name, weigth in weigths.items():
-            self.__model.get_layer(name).set_weights(weigth)
+    def set_weights_by_name(self, weights):
+        for name, weight in weights.items():
+            self.__model.get_layer(name).set_weights(weight)
 
     def save_plot(self, to_file='model_plot.svg', shapes=False, layer_names=False):
-        plot_model(self.__model, to_file=to_file, show_shapes=shapes, show_layer_names=layer_names)
+        if to_file:
+            plot_model(self.__model, to_file=to_file, show_shapes=shapes, show_layer_names=layer_names)
 
     def compile(self, loss='binary_crossentropy', optimizer=keras.optimizers.Adam()):
         self.__model.compile(loss=loss, optimizer=optimizer, metrics=['accuracy'])
 
-    def to_h5(self, to_file='my_model.h5'):
-        self.__model.save(to_file)
-
-    def to_json(self, to_file='my_model.json'):
-        model_json = self.__model.to_json()
-        with(to_file, 'w') as json_file:
-            json_file.write(model_json)
-
-    def to_yaml(self, to_file='my_model.yaml'):
-        model_yaml = self.__model.to_yaml()
-        with(to_file, 'w') as yaml_file:
-            yaml_file.write(model_yaml)
+    def export(self, to_file):
+        name, ext = os.path.splitext(to_file)
+        if ext == '.h5':
+            self.__model.save(to_file)
+        elif ext == '.json':
+            model_json = self.__model.to_json()
+            with(to_file, 'w') as json_file:
+                json_file.write(model_json)
+        elif ext == '.yaml':
+            model_yaml = self.__model.to_yaml()
+            with(to_file, 'w') as yaml_file:
+                yaml_file.write(model_yaml)
 
 
 class DenseNeuralNetwork(NeuralNetwork):
@@ -177,7 +181,7 @@ class OptimizedNeuralNetwork(NeuralNetwork):
 
     @staticmethod
     def _build(config: NeuralNetworkConfig, categorical_data_categories: dict, continuous_features: list,
-               correlation_info: list,embedding_size: int, dropout_rate, output_units: int):
+               correlation_info: list,embedding_size: int, dropout_rate: float, output_units: int):
         feature_layers = {}
         hidden_layers = []
         inputs = []
@@ -239,7 +243,7 @@ class Trainer:
     def train(self, verbose=1):
         # tensorboard = TensorBoard(log_dir="logs/{}".format(time()))
         self.__nnet.get_model().fit(self.__training_dataset, self.__training_target, batch_size=self.__batch_size,
-                                    epochs=self.__epochs, verbose=verbose)
+                                    epochs=self.__epochs, verbose=verbose, shuffle=False)
 
     def evaluate(self, verbose=1):
         self.__score = self.__nnet.get_model().evaluate(self.__training_dataset, self.__training_target,
@@ -361,7 +365,7 @@ class FeatureSelector:
                     noisy_model = self._source_model
                     predictor = Predictor(noisy_model, noisy_dataset)
                 noisy_prediction = predictor.predict()
-                sensitivity = abs(np.sum(noisy_prediction) - np.sum(prediction))
+                sensitivity = abs(np.sum(noisy_prediction) - np.sum(prediction)) / len(noisy_prediction)
                 test_dataset.get_features().set_sensitivity(column, sensitivity)
                 training_dataset.get_features().set_sensitivity(column, sensitivity)
                 print("Sensitivity of %s: %f" % (column, training_dataset.get_features().get_sensitivity(column)))
@@ -444,7 +448,7 @@ class CorrelationAnalyzer:
                 trainer.evaluate()
                 predictor = Predictor(noisy_model, test_dataset)
             noisy_prediction = predictor.predict()
-            self._table[0][idx+1] = abs(np.sum(noisy_prediction) - self._table[0][0])
+            self._table[0][idx+1] = abs(np.sum(noisy_prediction) - self._table[0][0]) / len(noisy_prediction)
 
         for idx, column in enumerate(self._columns):
             if test_dataset.get_data()[column].dtype.name == 'category':
@@ -458,7 +462,7 @@ class CorrelationAnalyzer:
                 noisy_model = self._source_model
                 predictor = Predictor(noisy_model, noisy_dataset)
             noisy_prediction = predictor.predict()
-            self._table[idx + 1][0] = abs(np.sum(noisy_prediction) - self._table[0][0])
+            self._table[idx + 1][0] = abs(np.sum(noisy_prediction) - self._table[0][0]) / len(noisy_prediction)
 
         for c in range(len(self._cat_data)+self._cont_input_shape):
             for idx in range(len(self._cat_data)+self._cont_input_shape):
@@ -482,5 +486,6 @@ class CorrelationAnalyzer:
                     if column in candidates[candidates[column][row]].tolist():
                         fcandidates[column].append(candidates[column][row])
         fcandidates = list(filter(None, fcandidates.values()))
+        [l.sort() for l in fcandidates]
         fcandidates = [list(x) for x in set(tuple(x) for x in fcandidates)]
         return fcandidates

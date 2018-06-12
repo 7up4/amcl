@@ -35,8 +35,9 @@ class DataSet:
 
     def calculate_statistics(self, high_risk: list, low_risk: list):
         data = self.__data
-        harm = data.loc[data['num'].isin(high_risk)]
-        no_harm = data.loc[data['num'].isin(low_risk)]
+        resulting_feature = self.resulting_feature
+        harm = data.loc[data[resulting_feature].isin(high_risk)]
+        no_harm = data.loc[data[resulting_feature].isin(low_risk)]
         for feature in self.__features.get_columns():
             feature_type = data[feature].dtype.name
             if feature_type == "category":
