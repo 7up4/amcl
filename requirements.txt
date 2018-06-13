@@ -11,3 +11,4 @@ pydot
 graphviz
 h5py
 matplotlib
+networkx

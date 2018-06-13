@@ -133,6 +133,7 @@ if __name__ == '__main__':
 
             correlation_analyzer = CorrelationAnalyzer(config, network, training_data)
             table = correlation_analyzer.run(test_data, training_data, training_target, noise_rate=noise_rate, training_epochs=training_epochs)
+            print(table)
             correlation_info = correlation_analyzer.select_candidates()
             print(correlation_info)
 

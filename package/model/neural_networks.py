@@ -7,6 +7,7 @@ import numpy as np
 import keras.initializers
 import keras.optimizers
 
+from networkx import Graph, find_cliques
 from sklearn.metrics import roc_curve, auc
 from keras.layers import Concatenate, Input, Embedding, Lambda, Activation, BatchNormalization
 from keras.layers.core import Dense, Dropout, Reshape
@@ -351,7 +352,7 @@ class FeatureSelector:
         prediction = predictor.predict()
         predictor.evaluate(test_target)
         prev_accuracy = predictor.get_score()['accuracy']
-        curr_accuracy = prev_accuracy
+        curr_accuracy = predictor.get_score()['accuracy']
         features_to_remove = []
         # noise_rate = random.uniform(0, noise_rate)
         while curr_accuracy >= prev_accuracy:
@@ -387,6 +388,8 @@ class FeatureSelector:
             prediction = predictor.predict()
             predictor.evaluate(test_target)
             prev_accuracy, curr_accuracy = curr_accuracy, predictor.get_score()['accuracy']
+            print(prev_accuracy)
+            print(curr_accuracy)
         return features_to_remove[:-1]
 
 
@@ -477,17 +480,18 @@ class CorrelationAnalyzer:
 
     def select_candidates(self):
         candidates = pd.DataFrame(columns=self._columns)
-        fcandidates = dict()
+        fcandidates = []
         for column in self._table:
             candidates[column] = pd.Series((self._table.loc[self._table[column] > self._table[column]['mean']]).index)
         for column in candidates:
-            fcandidates[column] = []
-            fcandidates[column].append(column)
             for row in range(candidates.shape[0]):
                 if candidates[column][row] == candidates[column][row] and candidates[column][row] != column:
                     if column in candidates[candidates[column][row]].tolist():
-                        fcandidates[column].append(candidates[column][row])
-        fcandidates = list(filter(None, fcandidates.values()))
+                        fcandidates.append([column, candidates[column][row]])
         [l.sort() for l in fcandidates]
-        fcandidates = [list(x) for x in set(tuple(x) for x in fcandidates)]
+        fcandidates = [l for l in fcandidates if fcandidates.count(l) == 2]
+        fcandidates = [tuple(x) for x in set(tuple(x) for x in fcandidates)]
+        correlation_graph = Graph()
+        correlation_graph.add_edges_from(fcandidates)
+        fcandidates = list(find_cliques(correlation_graph))
         return fcandidates
