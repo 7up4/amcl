@@ -4,6 +4,7 @@ logs
 # ignore envrironment stuff
 env
 .idea
+.DS_Store
 
 # ignore docs
 docs

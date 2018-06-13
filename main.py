@@ -1,6 +1,8 @@
 """amcl
 Usage:
-    main.py (predict|optimize|create-naive-model|create-optimized-model) --model-path=<str> --dataset=<str> --resulting-feature=<str> [--training-data=<float>|--test-data=<float>] [options]
+    main.py optimize --import-model=<str> --export-model=<str> --dataset=<str> --resulting-feature=<str> [--training-data=<float>|--test-data=<float>] [options]
+    main.py predict --import-model=<str> --dataset=<str> --resulting-feature=<str> [--training-data=<float>|--test-data=<float>] [options]
+    main.py (create-naive-model|create-optimized-model) --export-model=<str> --dataset=<str> --resulting-feature=<str> [--training-data=<float>|--test-data=<float>] [options]
 
 Options:
     --debug                     Debugging mode (temporary)
@@ -11,7 +13,8 @@ Options:
     --training-epochs=<int>     Number of training epochs [default: 100]
     --hidden-units=<int>        Number of units in hidden layer [default: 4]
     --noise-rate=<float>        Rate of noise added to dataset for some optimizations [default: 0.01]
-    --model-path=path           Model path to export or import
+    --import-model=<str>        Model path to import
+    --export-model=<str>        Model path to export
     --naive-plot-path=path      Naive model structure image path
     --optimized-plot-path=path  Optimized model structure image path
     --delimiter=<char>          Delimiter [default: ,]
@@ -74,7 +77,8 @@ if __name__ == '__main__':
     hidden_units = int(argv['--hidden-units'])
     batch_normalization = argv['--use-batch-normalization']
     noise_rate = float(argv['--noise-rate'])
-    model_path = argv['--model-path']
+    imported_model = argv['--import-model']
+    model_to_export = argv['--export-model']
     predicting = argv['predict']
     optimizing = argv['optimize']
     creating_naive = argv['create-naive-model']
@@ -115,7 +119,7 @@ if __name__ == '__main__':
         training_data.drop_resulting_feature()
         if not len(correlation_info):
             enable_reproducible_mode()
-            network = NeuralNetwork.from_file(model_path)
+            network = NeuralNetwork.from_file(imported_model)
             feature_selector = FeatureSelector(config, network, training_data)
             less_sensitive_features = feature_selector.run(training_data, training_target, test_data, test_target, noise_rate=noise_rate, training_epochs=training_epochs)
             print(less_sensitive_features)
@@ -144,6 +148,9 @@ if __name__ == '__main__':
         predictor.evaluate(test_target)
 
         print("Prediction accuracy for %d rows: %0.2f %%" % (len(test_data.index()), (predictor.get_score()['accuracy'] * 100)))
+        if model_to_export:
+            network.export(model_to_export)
+
     if creating_naive:
         network = DenseNeuralNetwork.from_scratch(config, training_data, embedding_size=emb_size, hidden_units=hidden_units, dropout_rate=dropout_rate)
         if naive_plot_path:
@@ -152,15 +159,17 @@ if __name__ == '__main__':
 
         trainer = Trainer(network, training_data, training_target, epochs=training_epochs)
         trainer.train()
-        network.export(model_path)
+        network.export(model_to_export)
 
         predictor = Predictor(network, test_data)
         prediction = predictor.predict()
         predictor.evaluate(test_target)
         print("Prediction accuracy for %d rows: %0.2f %%" % (len(test_data.index()), (predictor.get_score()['accuracy'] * 100)))
+        if model_to_export:
+            network.export(model_to_export)
 
     if predicting:
-        network = NeuralNetwork.from_file(model_path)
+        network = NeuralNetwork.from_file(imported_model)
         predictor = Predictor(network, test_data)
         prediction = predictor.predict()
         print(prediction)
