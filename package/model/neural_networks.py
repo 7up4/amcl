@@ -82,17 +82,18 @@ class NeuralNetwork:
         self.__model.compile(loss=loss, optimizer=optimizer, metrics=['accuracy'])
 
     def export(self, to_file):
-        name, ext = os.path.splitext(to_file)
-        if ext == '.h5':
-            self.__model.save(to_file)
-        elif ext == '.json':
-            model_json = self.__model.to_json()
-            with(to_file, 'w') as json_file:
-                json_file.write(model_json)
-        elif ext == '.yaml':
-            model_yaml = self.__model.to_yaml()
-            with(to_file, 'w') as yaml_file:
-                yaml_file.write(model_yaml)
+        if to_file:
+            name, ext = os.path.splitext(to_file)
+            if ext == '.h5':
+                self.__model.save(to_file)
+            elif ext == '.json':
+                model_json = self.__model.to_json()
+                with(to_file, 'w') as json_file:
+                    json_file.write(model_json)
+            elif ext == '.yaml':
+                model_yaml = self.__model.to_yaml()
+                with(to_file, 'w') as yaml_file:
+                    yaml_file.write(model_yaml)
 
 
 class DenseNeuralNetwork(NeuralNetwork):
@@ -128,7 +129,7 @@ class DenseNeuralNetwork(NeuralNetwork):
         embedding_layers = []
         categorical_inputs = []
         for feature, size in categorical_data_categories.items():
-            categorical_input = Input((1,), name=config.cat_input + feature)
+            categorical_input = Input((1,), name=config.cat_input + "_" + feature)
             categorical_inputs.append(categorical_input)
             embedding_layer = Embedding(size + 1, embedding_size, name=feature, trainable=embedding_layers_trainable)(
                 categorical_input)
@@ -189,12 +190,12 @@ class OptimizedNeuralNetwork(NeuralNetwork):
         hidden_layers = []
         inputs = []
         for feature, size in categorical_data_categories.items():
-            categorical_input = Input((1,), name=config.cat_input + feature)
+            categorical_input = Input((1,), name=config.cat_input + "_" + feature)
             inputs.append(categorical_input)
             embedding_layer = Embedding(size + 1, embedding_size, name=feature)(categorical_input)
             feature_layers[feature] = embedding_layer
         for feature in continuous_features:
-            continuous_input = Input((1,), name=config.cont_input + feature)
+            continuous_input = Input((1,), name=config.cont_input + "_" + feature)
             inputs.append(continuous_input)
             reshaped_continuous_input = Reshape((1, 1), name=feature)(continuous_input)
             feature_layers[feature] = reshaped_continuous_input
@@ -277,7 +278,7 @@ class Predictor:
         self._prediction = self._nnet.get_model().predict(self._dataset).flatten()
         return self._prediction
 
-    def evaluate(self, real_values):
+    def evaluate(self, real_values, show_plot: bool = False):
         if len(self._prediction) > 0:
             rounded_pred = np.round(self._prediction)
             tp = np.sum(np.logical_and(rounded_pred == 1, real_values == 1))
@@ -294,7 +295,8 @@ class Predictor:
             self._score['tn'] = tn
             self._score['fp'] = fp
             self._score['fn'] = fn
-            self._roc(real_values, np.unique(real_values).size)
+            if show_plot:
+                self._roc(real_values, np.unique(real_values).size)
 
     def _roc(self, real_values, n_classes):
         fpr = dict()
@@ -314,7 +316,7 @@ class Predictor:
         plt.ylabel('Истино-положительные решения')
         plt.title('Кривая ошибок')
         plt.legend(loc="lower right")
-        # plt.show()
+        plt.show()
 
     def get_score(self):
         return self._score
@@ -330,7 +332,7 @@ class FeatureSelector:
         self._training_dataset = training_dataset
         categorical_columns = training_dataset.get_data(without_resulting_feature=True).select_dtypes(include='category').columns
         self._weights = self._source_model.get_weights_with_name()
-        self._cat_input_shape = self._source_model.get_layer(config.cat_input+categorical_columns[0]).get_input_shape_at(0)
+        self._cat_input_shape = self._source_model.get_layer(config.cat_input + "_" + categorical_columns[0]).get_input_shape_at(0)
         self._cont_input_shape = self._source_model.get_layer(config.cont_input).get_input_shape_at(0)[-1]
         self._hid_size = self._source_model.get_layer(config.hidden).get_output_shape_at(0)[-1]
         self._emb_size = self._source_model.get_layer(categorical_columns[0]).get_output_shape_at(0)[-1]
@@ -403,7 +405,7 @@ class CorrelationAnalyzer:
             include='category').columns
         self._weights = None
         self._emb_weights = None
-        self._cat_input_shape = self._source_model.get_layer(config.cat_input+categorical_columns[0]).get_input_shape_at(0)
+        self._cat_input_shape = self._source_model.get_layer(config.cat_input + "_" + categorical_columns[0]).get_input_shape_at(0)
         self._cont_input_shape = self._source_model.get_layer(config.cont_input).get_input_shape_at(0)[-1]
         self._hid_size = self._source_model.get_layer(config.hidden).get_output_shape_at(0)[-1]
         self._emb_size = self._source_model.get_layer(categorical_columns[0]).get_output_shape_at(0)[-1]

@@ -23,15 +23,22 @@ class DataSet:
 
     @classmethod
     def load(cls, resulting_feature: str, input_handler: InputHandler):
-        dataset = input_handler.data
+        dataframe = input_handler.data
         feature_classes = input_handler.feature_classes
-        feature_names = dataset.columns.tolist()
+        feature_names = dataframe.columns.tolist()
         for idx, f in enumerate(feature_names):
             if feature_classes[idx] == "cat":
-                dataset[f] = dataset[f].astype('category')
+                dataframe[f] = dataframe[f].astype('category')
         features = Metadata(feature_names)
         features.resulting(resulting_feature)
-        return cls(dataset, features)
+        return cls(dataframe, features)
+
+    @classmethod
+    def dataframe_to_dataset(cls, dataframe, resulting_feature:str=None):
+        features = Metadata(dataframe.columns.tolist())
+        if resulting_feature:
+            features.resulting(resulting_feature)
+        return cls(dataframe, features)
 
     def calculate_statistics(self, high_risk: list, low_risk: list):
         data = self.__data
@@ -65,8 +72,9 @@ class DataSet:
         self.__data = self.__data.sample(frac=1).reset_index(drop=True)
 
     def drop_columns(self, columns):
-        self.__features.drop_features(columns)
-        self.__data.drop(columns, inplace=True, axis=1)
+        if columns:
+            self.__features.drop_features(columns)
+            self.__data.drop(columns, inplace=True, axis=1)
 
     def get_data(self, start=None, stop=None, without_resulting_feature=False):
         if without_resulting_feature and self.resulting_feature:
