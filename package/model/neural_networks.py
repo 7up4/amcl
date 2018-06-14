@@ -78,7 +78,8 @@ class NeuralNetwork:
         if to_file:
             plot_model(self.__model, to_file=to_file, show_shapes=shapes, show_layer_names=layer_names)
 
-    def compile(self, loss='binary_crossentropy', optimizer=keras.optimizers.Adam()):
+    def compile(self, loss='binary_crossentropy', lr=0.001):
+        optimizer=keras.optimizers.Adam(lr=lr)
         self.__model.compile(loss=loss, optimizer=optimizer, metrics=['accuracy'])
 
     def export(self, to_file):
@@ -226,7 +227,7 @@ class OptimizedNeuralNetwork(NeuralNetwork):
 
 
 class Trainer:
-    def __init__(self, nnet: NeuralNetwork, training_dataset, training_target, batch_size=16, epochs=1000):
+    def __init__(self, nnet: NeuralNetwork, training_dataset, training_target, batch_size=32, epochs=1000):
         self.__nnet = nnet
         self.__training_dataset = training_dataset
         self.__training_target = training_target
@@ -347,7 +348,7 @@ class FeatureSelector:
                                                  dropout_rate=self._dropout_rate,embedding_layers_trainable=False)
         return noisy_model
 
-    def run(self, training_dataset, training_target, test_dataset, test_target, noise_rate=0.01, training_epochs=100):
+    def run(self, training_dataset, training_target, test_dataset, test_target, noise_rate=0.01, training_epochs=100, batch_size=8, lr=0.001):
         training_dataset = DataSet.copy(training_dataset)
         test_dataset = DataSet.copy(test_dataset)
         predictor = Predictor(self._source_model, test_dataset)
@@ -380,9 +381,9 @@ class FeatureSelector:
             training_dataset.rm_less_sensitive()
             emb_weights = {feature: self._weights[feature] for feature in training_dataset.get_data().select_dtypes(include='category').columns.tolist()}
             self._source_model = self._build_network(self._config, training_dataset)
-            self._source_model.compile()
+            self._source_model.compile(lr=lr)
             self._source_model.set_weights_by_name(emb_weights)
-            trainer = Trainer(self._source_model, training_dataset, training_target, epochs=training_epochs)
+            trainer = Trainer(self._source_model, training_dataset, training_target, epochs=training_epochs, batch_size=batch_size)
             trainer.train()
             trainer.evaluate()
             self._weights = self._source_model.get_weights_with_name()
@@ -425,7 +426,7 @@ class CorrelationAnalyzer:
             noisy_model.set_weights_by_name(self._weights)
         return noisy_model
 
-    def run(self, test_dataset, training_dataset, training_target, noise_rate=0.01, training_epochs=100):
+    def run(self, test_dataset, training_dataset, training_target, noise_rate=0.01, training_epochs=100, batch_size=32, lr=0.03):
         training_dataset = DataSet.copy(training_dataset)
         trainer = Trainer(self._source_model, training_dataset, training_target, epochs=training_epochs)
         trainer.train()
@@ -440,8 +441,8 @@ class CorrelationAnalyzer:
                 noisy_dataset = DataSet.copy(training_dataset)
                 noisy_dataset.add_noise_to_categorical_columns(column, noise_rate)
                 noisy_model = self._build_network(self._config, training_dataset)
-                noisy_model.compile()
-                trainer = Trainer(noisy_model, noisy_dataset, training_target, epochs=training_epochs)
+                noisy_model.compile(lr=lr)
+                trainer = Trainer(noisy_model, noisy_dataset, training_target, epochs=training_epochs, batch_size=batch_size)
                 trainer.train()
                 trainer.evaluate()
                 predictor = Predictor(noisy_model, test_dataset)
@@ -449,8 +450,8 @@ class CorrelationAnalyzer:
                 noisy_dataset = DataSet.copy(training_dataset)
                 noisy_dataset.add_noise_to_column(column, noise_rate)
                 noisy_model = self._build_network(self._config, training_dataset)
-                noisy_model.compile()
-                trainer = Trainer(noisy_model,noisy_dataset, training_target, epochs=training_epochs)
+                noisy_model.compile(lr=lr)
+                trainer = Trainer(noisy_model,noisy_dataset, training_target, epochs=training_epochs, batch_size=batch_size)
                 trainer.train()
                 trainer.evaluate()
                 predictor = Predictor(noisy_model, test_dataset)

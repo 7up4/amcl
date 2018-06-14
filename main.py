@@ -2,8 +2,9 @@
 Usage:
     main.py optimize --import-model=<str> --export-model=<str> --dataset=<str> --resulting-feature=<str> [--train-size=<float>|--test-size=<float>] [options]
     main.py predict --import-model=<str> --dataset=<str> --resulting-feature=<str> [--train-size=<float>|--test-size=<float>] [options]
-    main.py (create-naive-model|create-optimized-model) --dataset=<str> --resulting-feature=<str> [--export-model=<str>] [--train-size=<float>|--test-size=<float>] [options]
+    main.py create-naive-model --dataset=<str> --resulting-feature=<str> [--export-model=<str>] [--train-size=<float>|--test-size=<float>] [options]
     main.py (--svm|--naive-bayes) --dataset=<str> --resulting-feature=<str> [options]
+    main.py create-optimized-model --dataset=<str> --resulting-feature=<str> --correlation-info=<list> [--export-model=<str>] [--train-size=<float>|--test-size=<float>] [options]
 
 Options:
     --debug                     Debugging mode (temporary)
@@ -191,10 +192,10 @@ if __name__ == '__main__':
             print(correlation_info)
 
         network = OptimizedNeuralNetwork.from_scratch(config, training_data, correlation_info, embedding_size=emb_size, dropout_rate=dropout_rate, output_units=1)
-        network.compile()
+        network.compile(lr=0.03)
         network.save_plot(optimized_plot_path, layer_names=True)
 
-        trainer = Trainer(network, training_data, training_target, epochs=training_epochs)
+        trainer = Trainer(network, training_data, training_target, epochs=training_epochs, batch_size=32)
         trainer.train()
 
         predictor = Predictor(network, test_data)
@@ -210,12 +211,12 @@ if __name__ == '__main__':
             network.export(model_to_export)
 
     if creating_optimized:
-        enable_reproducible_mode()
+        # enable_reproducible_mode()
         network = OptimizedNeuralNetwork.from_scratch(config, training_data, correlation_info, embedding_size=emb_size, dropout_rate=dropout_rate, output_units=1)
-        network.compile()
+        network.compile(lr=0.03)
         network.save_plot(optimized_plot_path, layer_names=True)
 
-        trainer = Trainer(network, training_data, training_target, epochs=training_epochs)
+        trainer = Trainer(network, training_data, training_target, epochs=training_epochs, batch_size=32)
         trainer.train()
 
         predictor = Predictor(network, test_data)
@@ -236,7 +237,7 @@ if __name__ == '__main__':
             network.save_plot(naive_plot_path, layer_names=True)
         network.compile()
 
-        trainer = Trainer(network, training_data, training_target, epochs=training_epochs)
+        trainer = Trainer(network, training_data, training_target, epochs=training_epochs, batch_size=8)
         trainer.train()
         network.export(model_to_export)
 
