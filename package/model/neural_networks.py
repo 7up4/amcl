@@ -132,7 +132,7 @@ class DenseNeuralNetwork(NeuralNetwork):
         for feature, size in categorical_data_categories.items():
             categorical_input = Input((1,), name=config.cat_input + "_" + feature)
             categorical_inputs.append(categorical_input)
-            embedding_layer = Embedding(size + 1, embedding_size, name=feature, trainable=embedding_layers_trainable)(
+            embedding_layer = Embedding(size, embedding_size, name=feature, trainable=embedding_layers_trainable)(
                 categorical_input)
             embedding_layers.append(embedding_layer)
 
@@ -193,7 +193,7 @@ class OptimizedNeuralNetwork(NeuralNetwork):
         for feature, size in categorical_data_categories.items():
             categorical_input = Input((1,), name=config.cat_input + "_" + feature)
             inputs.append(categorical_input)
-            embedding_layer = Embedding(size + 1, embedding_size, name=feature)(categorical_input)
+            embedding_layer = Embedding(size, embedding_size, name=feature)(categorical_input)
             feature_layers[feature] = embedding_layer
         for feature in continuous_features:
             continuous_input = Input((1,), name=config.cont_input + "_" + feature)
