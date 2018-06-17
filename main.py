@@ -66,7 +66,7 @@ import random as rn
 #     qtdb.close()
 #     print(ddd)
 
-def enable_reproducible_mode(seed=32, skip_tf: bool = False):
+def enable_reproducible_mode(seed=456, skip_tf: bool = False):
     environ['PYTHONHASHSEED'] = '0'
     random.seed(seed)
     rn.seed(1254)
@@ -114,7 +114,6 @@ if __name__ == '__main__':
     ihandler = FSHandler(dataset_path, delimiter, header_line, classes_line, na_values)
     dataset = DataSet.load(resulting_feature, ihandler)
     dataset.drop_invalid_data()
-    dataset.combine_classes(feature_name=resulting_feature, from_classes=[2, 3, 4], to_class=1)
     dataset.calculate_statistics([1], [0])
     dataset.remove_invaluable_features()
     dataset.drop_columns(features_to_drop)

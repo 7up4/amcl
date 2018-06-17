@@ -37,7 +37,7 @@ class FSHandler(InputHandler):
     def data(self) -> pd.DataFrame:
         self.__file.seek(0)
         return pd.read_csv(self.__file, delimiter=self.__delimiter, header=self.__header_line,
-                           na_values=self.__na_values)
+                           na_values=self.__na_values, nrows=10000)
 
     @property
     def file(self):
