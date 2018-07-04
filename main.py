@@ -48,6 +48,7 @@ from package.model.datasets import DataSet
 from package.model.input_handlers import SqlAlchemyDBHandler, QtSqlDBHandler, FSHandler
 from package.model.neural_networks import NeuralNetwork, DenseNeuralNetwork, OptimizedNeuralNetwork, Trainer, FeatureSelector, NeuralNetworkConfig, Predictor, CorrelationAnalyzer
 import random as rn
+from random import randint
 
 # def alchemy():
 #     alchemy = SqlAlchemyDBHandler("postgresql", "postgres", "nurlan", "your_password", 5432, "dataset")
@@ -66,7 +67,7 @@ import random as rn
 #     qtdb.close()
 #     print(ddd)
 
-def enable_reproducible_mode(seed=456, skip_tf: bool = False):
+def enable_reproducible_mode(seed=795, skip_tf: bool = False):
     environ['PYTHONHASHSEED'] = '0'
     random.seed(seed)
     rn.seed(1254)
@@ -192,7 +193,7 @@ if __name__ == '__main__':
 
         network = OptimizedNeuralNetwork.from_scratch(config, training_data, correlation_info, embedding_size=emb_size, dropout_rate=dropout_rate, output_units=1)
         network.compile(lr=0.03)
-        network.save_plot(optimized_plot_path, layer_names=True)
+        network.save_plot(optimized_plot_path)
 
         trainer = Trainer(network, training_data, training_target, epochs=training_epochs, batch_size=32)
         trainer.train()
@@ -213,7 +214,7 @@ if __name__ == '__main__':
         # enable_reproducible_mode()
         network = OptimizedNeuralNetwork.from_scratch(config, training_data, correlation_info, embedding_size=emb_size, dropout_rate=dropout_rate, output_units=1)
         network.compile(lr=0.03)
-        network.save_plot(optimized_plot_path, layer_names=True)
+        network.save_plot(optimized_plot_path)
 
         trainer = Trainer(network, training_data, training_target, epochs=training_epochs, batch_size=32)
         trainer.train()
@@ -230,13 +231,15 @@ if __name__ == '__main__':
             network.export(model_to_export)
 
     if creating_naive:
-        enable_reproducible_mode()
+        # seed = randint(0,2000)
+        # print(seed)
+        # enable_reproducible_mode()
         network = DenseNeuralNetwork.from_scratch(config, training_data, embedding_size=emb_size, hidden_units=hidden_units, dropout_rate=dropout_rate)
         if naive_plot_path:
             network.save_plot(naive_plot_path, layer_names=True)
         network.compile()
 
-        trainer = Trainer(network, training_data, training_target, epochs=training_epochs, batch_size=8)
+        trainer = Trainer(network, training_data, training_target, epochs=training_epochs, batch_size=16)
         trainer.train()
         network.export(model_to_export)
 

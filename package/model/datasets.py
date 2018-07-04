@@ -50,11 +50,20 @@ class DataSet:
             if feature_type == "category":
                 harm_categories = harm[feature].value_counts(sort=False)
                 no_harm_categories = no_harm[feature].value_counts(sort=False)
+                print(feature)
+                print("no_harm")
+                print(no_harm_categories)
+                print("harm")
+                print(harm_categories)
                 observed = pd.concat([no_harm_categories, harm_categories], axis=1).values.transpose()
                 _, _, _, expected = chi2_contingency(observed)
                 result = chisquare(observed.flatten(), expected.flatten())
+                print(result)
             else:
                 result = mannwhitneyu(no_harm[feature], harm[feature], alternative='two-sided')
+                print(no_harm[feature].mean())
+                print(harm[feature].mean())
+                print(result)
             if result:
                 self.__features.set(feature, "statistic", result.statistic)
                 self.__features.set(feature, "pvalue", result.pvalue)

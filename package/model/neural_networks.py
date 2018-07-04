@@ -13,6 +13,7 @@ from keras.layers import Concatenate, Input, Embedding, Lambda, Activation, Batc
 from keras.layers.core import Dense, Dropout, Reshape
 from keras.models import load_model, model_from_json, model_from_yaml, Model
 from keras.utils.vis_utils import plot_model
+from keras.callbacks import TensorBoard
 
 from .datasets import DataSet
 from .importing_modules import *
@@ -246,9 +247,9 @@ class Trainer:
             self.__training_dataset = [*categorical_data, continuous_data]
 
     def train(self, verbose=1):
-        # tensorboard = TensorBoard(log_dir="logs/{}".format(time()))
+        tensorboard = TensorBoard(log_dir="./logs")
         self.__nnet.get_model().fit(self.__training_dataset, self.__training_target, batch_size=self.__batch_size,
-                                    epochs=self.__epochs, verbose=verbose, shuffle=False)
+                                    epochs=self.__epochs, verbose=verbose, shuffle=False, callbacks=[tensorboard])
 
     def evaluate(self, verbose=1):
         self.__score = self.__nnet.get_model().evaluate(self.__training_dataset, self.__training_target,
