@@ -29,7 +29,9 @@ class Metadata:
         return self._table[feature]
 
     def drop_features(self, features):
-        self._table.drop(features, inplace=True, axis=1)
+        features = list(set(features) & set(self._table.columns))
+        if features:
+            self._table.drop(features, inplace=True, axis=1)
 
     def has_feature(self, feature):
         return feature in self._table.columns.tolist()
